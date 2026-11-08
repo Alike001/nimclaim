@@ -1,5 +1,4 @@
 import { defineConfig, devices } from "@playwright/test";
-const apiPort = Number(process.env.NIMCLAIM_TEST_API_PORT ?? 3001);
 const webPort = Number(process.env.NIMCLAIM_TEST_WEB_PORT ?? 5173);
 export default defineConfig({
   testDir: "./tests/browser",
@@ -12,12 +11,9 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "npx tsx tests/browser-server.ts",
-      url: `http://127.0.0.1:${apiPort}/api/config`,
-      reuseExistingServer: false,
-    },
-    {
-      command: "npm run dev:web",
+      // The built client has no HMR navigation or shared dev optimizer cache.
+      // Build here as well so a direct project invocation cannot test stale JS.
+      command: `npm run build && npx vite preview --host 127.0.0.1 --port ${webPort} --strictPort`,
       url: `http://localhost:${webPort}`,
       reuseExistingServer: false,
     },

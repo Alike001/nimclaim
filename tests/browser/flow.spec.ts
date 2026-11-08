@@ -1,18 +1,22 @@
 import AxeBuilder from "@axe-core/playwright";
-import { test, expect, type Page, type BrowserContext } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { testSigner } from "../helpers";
 
-let organiserCookies: Awaited<ReturnType<BrowserContext["cookies"]>> = [];
 async function login(page: Page) {
-  if (organiserCookies.length) {
-    await page.context().addCookies(organiserCookies);
-    await page.goto("/");
-    await expect(
-      page.getByRole("heading", { name: "Your campaigns" }),
-    ).toBeVisible();
-    return;
-  }
   await page.goto("/");
+  await page.getByLabel("Organiser password").fill("browser-test-password");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Your campaigns" }),
+  ).toBeVisible();
+}
+
+test("organiser login is accessible after application readiness", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByLabel("Organiser password")).toBeVisible();
   expect(
     (
       await new AxeBuilder({ page })
@@ -20,13 +24,7 @@ async function login(page: Page) {
         .analyze()
     ).violations,
   ).toEqual([]);
-  await page.getByLabel("Organiser password").fill("browser-test-password");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Your campaigns" }),
-  ).toBeVisible();
-  organiserCookies = await page.context().cookies();
-}
+});
 async function invitation(page: Page) {
   await login(page);
   await page.getByRole("button", { name: "＋ Create campaign" }).click();

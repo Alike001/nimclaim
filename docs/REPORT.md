@@ -1,5 +1,42 @@
 # Native payout implementation report
 
+## Browser verification repair after public commit d003911
+
+8 November 2026. Started on clean `main` at `d003911db9f2e65ad27cb99d9dd9e705f2e23ac3`. Existing desktop/private HTTPS listeners, `.env`, organiser credentials, database and payment reservations were preserved. Changes are confined to the test harness and documentation; application, schema, SDK adapter, sender/HTLC restrictions and payout policy are unchanged.
+
+### What the five saved failures actually show
+
+The original logs and traces were preserved privately under `.local/browser-fix/publication-results/` before new runs. These were failures before the intended wallet/status assertions, not failed cryptographic or payment assertions:
+
+| Original desktop test             | Exact failure location                                                                                     | Evidence and classification                                                                                                                                                                                                                                                |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Organiser → signed claim → review | 30-second test budget expired at `page.exposeFunction()` for the recipient's synthetic signer              | UI setup and two axe scans had already consumed the budget. Trace includes slow browser operations, including a 3.7-second new page. Recorded API responses were 200/201. The signer/claim assertion was not reached.                                                      |
+| Ordinary browser unavailable      | Budget expired during axe `finishRun()` on the login page                                                  | Axe's extra blank-page creation took about 6.9 seconds, with individual JS injection/evaluation calls taking several seconds. The unavailable-wallet expectation was not reached.                                                                                          |
+| SDK rejected                      | Budget expired at the initial `page.goto('/')`                                                             | Creating the browser page already took about 10 seconds. There were no API responses in this trace; the SDK rejection assertion was not reached.                                                                                                                           |
+| SDK legacy rejection              | `page.evaluate: Execution context was destroyed, most likely because of a navigation` during axe injection | Network trace records a second document GET for the same root page about 0.8 seconds after the first. The scan raced an unexpected document navigation. The trace does not record the reload initiator, so attributing it to a particular Vite event would be speculation. |
+| SDK unknown error                 | Budget expired filling the campaign Title field                                                            | Campaign setup was still running; the trace records a roughly 41-second create-form click spanning cancellation. API responses shown were 200. The future-host-error assertion was not reached.                                                                            |
+
+The first unchanged isolated rerun of these five passed 5/5. A second unchanged run with two repetitions passed 9/10 and exposed a different, reproducible problem: the last test's campaign/claim/config calls returned **429**, and the page displayed **Too many requests**. The API's shared per-IP limiter survived between tests/repetitions. No original saved failure had a recorded 429, so this is not falsely presented as the cause of all five original failures.
+
+During diagnosis, Linux memory-pressure sampling showed `full avg10=52.68` and swap usage around 3.3 GiB. This establishes severe resource stalls during this task, consistent with the multi-second browser commands; it does not retrospectively prove the exact OS cause of every historical timeout. There is no evidence here of an application claim bug, occupied test ports, or expired authentication causing the original five. The precise historical reload trigger and source of all browser stalls remain unproven.
+
+### Harness fixes and checks
+
+- Every test now owns a fresh in-memory API/database, sessions and rate limiter. The loopback port is acquired explicitly; occupied listeners are never reused. No limiter, authentication, Origin or payment check is disabled. All specs use the fixture. Module-level cross-context organiser-cookie caching was removed; UI login remains exercised.
+- Browser tests build and serve the actual production client with a loopback Vite preview proxy, removing HMR navigation/dependency-optimizer activity from the test environment. Development startup is still checked by its separate Node 24 regression.
+- Login accessibility gets its own test after the login form is visible. The same WCAG tags and zero-violation assertion remain; campaign and approved-recipient accessibility assertions are retained. No tests are skipped, assertion relaxed or timeout enlarged. The default browser test budget stays 30 seconds.
+- Desktop and mobile have separate scripts and output directories. The combined runner always executes both sequentially and exits nonzero if either fails. A process-level regression uses a failing desktop stub and successful mobile stub to prove both execution and failure propagation.
+
+**Final full verification:** `NIMCLAIM_TEST_API_PORT=3107 NIMCLAIM_TEST_WEB_PORT=5197 npm run check` passed: **53 unit/API/native/RPC checks, 3 runtime checks, 16 desktop Chromium tests and 16 mobile Chromium tests (88 total)**. TypeScript, production build and formatting passed; dependency audit returned zero vulnerabilities. The same five selected desktop cases then passed both repetitions (**10/10**) with the fixed fixture, including the workload that had previously exhausted the shared limiter. Browser emulation and synthetic signatures are not physical Nimiq Pay evidence. Detailed traces/logs stay ignored locally, not in the public repo.
+
+### Physical testing handoff
+
+`npm run mobile:status` verifies the existing endpoint **https://192.168.186.152:8443/#diagnostics**. CA/hostname-verified requests returned HTML/config 200 and unauthenticated organiser API 401; API readback is TESTNET, mobile profile true, native spending false. The unit suite exercised actual Caddy TLS role restrictions with separate synthetic peers, including phone admin denial, cookie stripping and dispatch denial. No phone ingress or provider operation is claimed. The phone remains restricted to recipient routes; laptop organiser login is **http://localhost:5173**.
+
+The [one-page physical checklist](PHYSICAL-TEST-CHECKLIST.md) covers network setting, consensus, native account consent, claim-message review, organiser approval and unpaid status, with exact sanitized screenshots. Existing [certificate/startup instructions](NIMIQ-PAY-TEST.md) remain valid. Android/Nimiq Pay user-CA trust is an unresolved physical check. If rejected, use a publicly trusted HTTPS certificate on an owner-controlled endpoint/domain (private DNS resolution is possible), separately authorized; never bypass TLS or expose development admin services through a tunnel.
+
+**Mainnet NO-GO remains.** No real signing, transfer, deployment, credential reset, database migration, payment reservation reset or Nimlane modification was performed.
+
 ## Current milestone: private Android test endpoint started
 
 Continued from `c3f99998` on 8 November 2026. The actual API and Vite proxy were checked independently and are healthy on TESTNET with spending disabled. The owner confirmed that the laptop uses the Android phone's hotspot and deferred all phone interactions until after this task.

@@ -1,5 +1,7 @@
 # Private Android test: running, phone validation pending
 
+For the short owner-operated sequence, use the [one-page physical test checklist](PHYSICAL-TEST-CHECKLIST.md). This guide retains the detailed certificate, access-control and startup instructions.
+
 The private endpoint was started and verified locally on 8 November 2026. The laptop is connected to the intended Android phone's hotspot. No public tunnel, port forwarding, deployment, real wallet signing or payment was performed. The owner will perform the phone steps after this task.
 
 **Enter this exact URL in Nimiq Pay → Mini Apps → Custom URL:**

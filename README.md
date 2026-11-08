@@ -36,13 +36,15 @@ npm run typecheck        # React, server, tests and configuration
 npm run build            # typecheck + production client build to dist/
 npm run test:runtime     # requires dist/; setup CLI + production process restart
 npx playwright install chromium
-npm run test:browser     # desktop + mobile Chromium; launches isolated API and Vite
+npm run test:browser     # both projects run even if one fails; built client + fresh API per test
+npm run test:browser:desktop # desktop only; results under test-results/desktop/
+npm run test:browser:mobile  # mobile only; results under test-results/mobile/
 npm run check            # API tests + build + process test + browser suite
 npm run format:check     # formatting verification
 npm audit --omit=dev
 ```
 
-By default `test:browser` needs ports 3001 and 5173 and deliberately refuses to reuse running applications. If they are occupied, use the isolated test-port overrides below. Each device suite starts a fresh isolated server so the aggregate test burst does not exhaust the development IP rate limit. Tests never use `data/nimclaim.sqlite`. Browser screenshots and failure traces are written to ignored `test-results/`. Synthetic test signatures exercise the real server verifier. They do not demonstrate a physical Nimiq Pay integration.
+By default `test:browser` needs ports 3001 and 5173 and deliberately refuses to reuse running applications. If they are occupied, use the isolated test-port overrides below. Each test gets a fresh in-memory API, rate limiter and login; security checks remain enabled. Each device suite builds and serves the production client through a loopback Vite preview proxy, without HMR or dependency optimization. Both suites run sequentially, with separate results directories; the runner returns failure if either fails. Tests never use `data/nimclaim.sqlite`. Browser screenshots and failure traces are written to ignored `test-results/`. Synthetic test signatures exercise the real server verifier. They do not demonstrate a physical Nimiq Pay integration.
 
 Production mode serves `dist/` and the API from one process:
 
@@ -118,4 +120,4 @@ npm run mobile:start -- --bind-ip 192.168.186.152 --phone-ip 192.168.186.167
 npm run mobile:stop
 ```
 
-The read-only `/#diagnostics` screen checks API/host network agreement and actual provider consensus/height without requesting accounts, signatures or payments. Android CA trust and real-device claim signing remain owner-operated checks; a green desktop check is not physical-device evidence.
+The read-only `/#diagnostics` screen checks API/host network agreement and actual provider consensus/height without requesting accounts, signatures or payments. Use the [one-page physical checklist](docs/PHYSICAL-TEST-CHECKLIST.md). Android CA trust and real-device claim signing remain owner-operated checks; a green desktop check is not physical-device evidence.

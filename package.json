@@ -11,14 +11,16 @@
     "build": "npm run typecheck && vite build",
     "start": "NODE_ENV=production tsx --env-file-if-exists=.env server/index.ts",
     "test": "tsx --test tests/*.test.ts",
-    "test:browser": "playwright test --project=desktop-chromium && playwright test --project=mobile-chromium --output=test-results/mobile",
+    "test:browser": "tsx tests/run-browser.ts",
     "check": "npm run test && npm run build && npm run test:runtime && npm run test:browser",
     "test:runtime": "tsx --test tests/runtime/*.test.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "mobile:start": "tsx ops/mobile-test.ts start",
     "mobile:status": "tsx ops/mobile-test.ts status",
-    "mobile:stop": "tsx ops/mobile-test.ts stop"
+    "mobile:stop": "tsx ops/mobile-test.ts stop",
+    "test:browser:desktop": "playwright test --project=desktop-chromium --output=test-results/desktop",
+    "test:browser:mobile": "playwright test --project=mobile-chromium --output=test-results/mobile"
   },
   "keywords": [],
   "author": "",

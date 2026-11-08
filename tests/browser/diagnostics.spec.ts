@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 test("mobile diagnostics reads host and API metadata without requesting accounts, signatures or transfers", async ({
   page,
