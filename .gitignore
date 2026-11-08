@@ -22,3 +22,10 @@ playwright-report/
 
 # Runtime and audit output must never be publication assets.
 *.log
+# Staging database connection files and backup archives are never source assets.
+.pgpass
+*.dump
+*.pgdump
+*.backup
+*.enc
+*.sql.gz

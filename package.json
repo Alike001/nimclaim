@@ -21,7 +21,9 @@
     "mobile:stop": "tsx ops/mobile-test.ts stop",
     "test:browser:desktop": "playwright test --project=desktop-chromium --output=test-results/desktop",
     "test:browser:mobile": "playwright test --project=mobile-chromium --output=test-results/mobile",
-    "start:staging": "node --import tsx ops/staging-start.ts"
+    "start:staging": "node --import tsx ops/staging-start.ts",
+    "test:postgres": "node --import tsx tests/postgres/run.ts",
+    "check:staging": "npm run check && npm run test:postgres"
   },
   "keywords": [],
   "author": "",
@@ -30,6 +32,7 @@
   "dependencies": {
     "@nimiq/core": "^2.23.0",
     "@nimiq/mini-app-sdk": "^0.2.5",
+    "pg": "^8.23.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tsx": "^4.23.15",
@@ -39,6 +42,7 @@
     "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.65.0",
     "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.2.1",

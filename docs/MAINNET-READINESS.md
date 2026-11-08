@@ -31,3 +31,7 @@ The source NIM sheet has no sender row/account selector or explicit network row;
 Safe defaults are `SPENDING_ENABLED=false`, no `SPENDING_NETWORK`, no positive `MAX_PAYMENT_LUNA`, `PAYMENT_FEE_LUNA=0`, and no `RPC_URL`. HTTPS, explicit network, positive safe-integer amount limit, independent RPC and a trusted selected-sender commitment are all required. RPC credentials, if needed, use server-only `RPC_AUTHORIZATION`; never put credentials in URLs, the frontend or shared logs.
 
 Even when every other environment gate is satisfied, the current build remains blocked on selected-sender assurance. Never remove that check just to meet the deadline. Mainnet payment permission, deployment permission and GitHub push permission remain separate user decisions.
+
+## Free staging storage follow-up
+
+A separate async PostgreSQL path now supports TESTNET campaigns, private invitations, verified claims, sessions and organiser review. Real local Postgres concurrency/restart/restore tests are recorded in [RENDER-STAGING.md](RENDER-STAGING.md). Payment tables and permanent locks are preserved, but Postgres payment mutation/reconciliation APIs are not enabled or represented as operational. All existing sender/HTLC gates and mainnet NO-GO remain. No live wallet/signature/payment test or infrastructure deployment was performed.
