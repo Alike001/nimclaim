@@ -13,7 +13,7 @@ import {
 } from "./api";
 import { connectWallet, signChallenge, walletError } from "./wallet";
 
-type Config = { network: string; origin: string };
+type Config = { network: string; origin: string; staging?: boolean };
 function History({ claim }: { claim: Claim }) {
   return (
     <ol className="history">
@@ -66,10 +66,17 @@ export default function App() {
         <Notice text={error} />
         {config &&
           (hash === "#diagnostics" ? (
-            <>
-              <h1>Private device check</h1>
-              <WalletDiagnostics expectedNetwork={config.network} />
-            </>
+            config.staging ? (
+              <section className="panel">
+                <h1>Page unavailable</h1>
+                <p>Open your private invitation to request a TESTNET reward.</p>
+              </section>
+            ) : (
+              <>
+                <h1>Private device check</h1>
+                <WalletDiagnostics expectedNetwork={config.network} />
+              </>
+            )
           ) : hash.startsWith("#claim=") ? (
             token ? (
               <Recipient key={token} token={token} config={config} />
@@ -82,7 +89,7 @@ export default function App() {
               </section>
             )
           ) : (
-            <Organiser />
+            <Organiser staging={config.staging} />
           ))}
       </main>
       <footer>
@@ -94,7 +101,7 @@ export default function App() {
     </>
   );
 }
-function Organiser() {
+function Organiser({ staging }: { staging?: boolean }) {
   const [authenticated, setAuthenticated] = useState<boolean>();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selected, setSelected] = useState<string>();
@@ -153,8 +160,9 @@ function Organiser() {
         </form>
         <Notice text={error} />
         <p className="muted">
-          First visit? Run the local setup command in the README to create your
-          organiser credentials.
+          {staging
+            ? "Use your separate staging organiser credentials."
+            : "First visit? Run the local setup command in the README to create your organiser credentials."}
         </p>
         <p>Receiving a reward? Open the invitation from your organiser.</p>
       </section>
@@ -360,6 +368,7 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
     campaign: Campaign;
     wallet: { address: string } | null;
     paymentGate: PaymentGate;
+    staging?: boolean;
     invitations: { id: string; created: number }[];
     claims: Claim[];
   }>();
@@ -448,12 +457,14 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
         </div>
         <p className="muted">Expires {date(c.expires)}</p>
       </section>
-      <CampaignWallet
-        campaignId={id}
-        wallet={data.wallet}
-        gate={data.paymentGate}
-        reload={load}
-      />
+      {!data.staging && (
+        <CampaignWallet
+          campaignId={id}
+          wallet={data.wallet}
+          gate={data.paymentGate}
+          reload={load}
+        />
+      )}
       <section className="panel">
         <h2>Invite a contributor</h2>
         <p>
@@ -561,7 +572,7 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
                 payment.
               </p>
             )}
-            {claim.status === "payment-ready" && (
+            {claim.status === "payment-ready" && !data.staging && (
               <Payout claim={claim} reload={load} />
             )}
           </section>

@@ -20,7 +20,8 @@
     "mobile:status": "tsx ops/mobile-test.ts status",
     "mobile:stop": "tsx ops/mobile-test.ts stop",
     "test:browser:desktop": "playwright test --project=desktop-chromium --output=test-results/desktop",
-    "test:browser:mobile": "playwright test --project=mobile-chromium --output=test-results/mobile"
+    "test:browser:mobile": "playwright test --project=mobile-chromium --output=test-results/mobile",
+    "start:staging": "node --import tsx ops/staging-start.ts"
   },
   "keywords": [],
   "author": "",

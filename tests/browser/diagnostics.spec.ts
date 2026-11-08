@@ -55,3 +55,29 @@ test("diagnostics does not accept host network mismatch as readiness", async ({
     page.getByRole("region", { name: "Read-only wallet diagnostics" }),
   ).toContainText("NOT VERIFIED — do not sign a claim");
 });
+
+test("public staging does not expose diagnostics or local credential setup instructions", async ({
+  page,
+}) => {
+  await page.route("**/api/config", (route) =>
+    route.fulfill({
+      json: {
+        network: "testnet",
+        origin: "https://nimclaim-testnet-staging.onrender.com",
+        staging: true,
+      },
+    }),
+  );
+  await page.goto("/#diagnostics");
+  await expect(
+    page.getByRole("heading", { name: "Page unavailable" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Refresh wallet diagnostics" }),
+  ).toHaveCount(0);
+  await page.goto("/");
+  await expect(
+    page.getByText("Use your separate staging organiser credentials."),
+  ).toBeVisible();
+  await expect(page.getByText("First visit?", { exact: false })).toHaveCount(0);
+});

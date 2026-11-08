@@ -19,3 +19,6 @@ playwright-report/
 *.jks
 *.keystore
 .local/
+
+# Runtime and audit output must never be publication assets.
+*.log

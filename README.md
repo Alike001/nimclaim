@@ -121,3 +121,7 @@ npm run mobile:stop
 ```
 
 The read-only `/#diagnostics` screen checks API/host network agreement and actual provider consensus/height without requesting accounts, signatures or payments. Use the [one-page physical checklist](docs/PHYSICAL-TEST-CHECKLIST.md). Android CA trust and real-device claim signing remain owner-operated checks; a green desktop check is not physical-device evidence.
+
+## Publicly trusted HTTPS staging (prepared, not deployed)
+
+Use the [Render staging readiness report and exact setup](docs/RENDER-STAGING.md) and root `render.yaml` for a fresh, isolated TESTNET claim trial. This paid single-instance staging service uses its own persistent disk, durable conservative rate limits, public route gateway and independent API payment denials. It does not read local `.env` or reuse local records/credentials. PostgreSQL remains the production/scaling path. Deployment, physical wallet signing and any spending require separate approval; no Render resource has been created.

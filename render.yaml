@@ -1,0 +1,38 @@
+# Preparation only. Creating/applying this Blueprint starts a deploy: separate approval required.
+services:
+  - type: web
+    name: nimclaim-testnet-staging
+    runtime: node
+    plan: 0.5c-512mb
+    region: frankfurt
+    branch: main
+    numInstances: 1
+    autoDeployTrigger: "off"
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm run start:staging
+    healthCheckPath: /api/config
+    disk:
+      name: nimclaim-staging-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: NODE_ENV
+        value: production
+      - key: NIMCLAIM_STAGING
+        value: "1"
+      - key: NETWORK
+        value: testnet
+      - key: SPENDING_ENABLED
+        value: "false"
+      - key: MAX_PAYMENT_LUNA
+        value: "0"
+      - key: PAYMENT_FEE_LUNA
+        value: "0"
+      - key: DATABASE_PATH
+        value: /var/data/nimclaim-staging.sqlite
+      - key: APP_ORIGIN
+        sync: false
+      - key: STAGING_ORGANISER_PASSWORD_HASH
+        sync: false

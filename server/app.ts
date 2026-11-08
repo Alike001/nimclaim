@@ -51,9 +51,15 @@ export interface Config {
   now?: () => number;
   staticDir?: string;
   mobileTest?: boolean;
+  staging?: boolean;
   payments?: Omit<PaymentOptions, "origin" | "network" | "now">;
 }
 export function createApp(config: Config) {
+  if (
+    config.staging &&
+    (config.network !== "testnet" || !config.origin.startsWith("https://"))
+  )
+    throw new Error("Staging requires HTTPS and TESTNET");
   if (config.mobileTest && config.network !== "testnet")
     throw new Error(
       "Private mobile tests require an existing TESTNET installation.",
@@ -79,7 +85,8 @@ export function createApp(config: Config) {
   migratePayments(db);
   const payments = new Payments(db, {
     ...config.payments,
-    enabled: config.mobileTest ? false : config.payments?.enabled,
+    enabled:
+      config.mobileTest || config.staging ? false : config.payments?.enabled,
     origin: config.origin,
     network: config.network,
     now,
@@ -138,6 +145,9 @@ export function createApp(config: Config) {
       ),
     };
   }
+  if (config.staging)
+    db.exec(`PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS staging_rate (
+      key TEXT PRIMARY KEY, count INTEGER NOT NULL, until INTEGER NOT NULL)`);
   const rate = new Map<string, { count: number; until: number }>();
   const server = createServer(async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -161,14 +171,41 @@ export function createApp(config: Config) {
         return serveStatic(path, res, config.staticDir);
       if (!["GET", "POST"].includes(req.method ?? ""))
         fail(405, "Method not allowed.");
+      if (
+        config.staging &&
+        (/^\/api\/payments(?:\/|$)/.test(path) ||
+          /^\/api\/claims\/[^/]+\/payment(?:\/|$)/.test(path) ||
+          /^\/api\/campaigns\/[^/]+\/wallet(?:\/|$)/.test(path))
+      )
+        fail(403, "Payments are unavailable in staging.");
       // Never trust forwarded IP headers. Single-process development rate limit.
-      for (const [key, value] of rate)
-        if (value.until <= now()) rate.delete(key);
-      const rateKey = `${req.socket.remoteAddress}:${path === "/api/login" ? "login" : "api"}`;
-      const bucket = rate.get(rateKey) ?? { count: 0, until: now() + 60_000 };
-      if (++bucket.count > (path === "/api/login" ? 10 : 180))
-        fail(429, "Too many requests. Try again in a minute.");
-      rate.set(rateKey, bucket);
+      if (config.staging) {
+        // Deliberately global, bounded buckets: spoofed proxy headers cannot evade
+        // limits, and restarts cannot reset them. Suitable only for a small trial.
+        const key = path === "/api/login" ? "login" : "api";
+        const count = atomic(db, () => {
+          run(
+            `INSERT INTO staging_rate VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET
+            count=CASE WHEN staging_rate.until<=? THEN 1 ELSE staging_rate.count+1 END,
+            until=CASE WHEN staging_rate.until<=? THEN excluded.until ELSE staging_rate.until END`,
+            key,
+            now() + 60_000,
+            now(),
+            now(),
+          );
+          return get("SELECT count FROM staging_rate WHERE key=?", key)!.count;
+        });
+        if (count > (key === "login" ? 10 : 180))
+          fail(429, "Too many requests. Try again in a minute.");
+      } else {
+        for (const [key, value] of rate)
+          if (value.until <= now()) rate.delete(key);
+        const rateKey = `${req.socket.remoteAddress}:${path === "/api/login" ? "login" : "api"}`;
+        const bucket = rate.get(rateKey) ?? { count: 0, until: now() + 60_000 };
+        if (++bucket.count > (path === "/api/login" ? 10 : 180))
+          fail(429, "Too many requests. Try again in a minute.");
+        rate.set(rateKey, bucket);
+      }
       let body: any;
       if (req.method === "POST") {
         if (req.headers.origin !== config.origin)
@@ -182,7 +219,9 @@ export function createApp(config: Config) {
         return send(200, {
           network: config.network,
           origin: config.origin,
-          payments: payments.gate(),
+          ...(config.staging
+            ? { staging: true }
+            : { payments: payments.gate() }),
           mobileTest: config.mobileTest ?? false,
         });
       const session = /(?:^|;\s*)nimclaim_session=([a-f0-9]{64})(?:;|$)/.exec(
@@ -450,6 +489,7 @@ export function createApp(config: Config) {
         if (!campaign) fail(404, "Campaign not found.");
         return send(200, {
           campaign,
+          staging: config.staging ?? false,
           wallet: payments.wallet(detail[1]),
           paymentGate: payments.gate(),
           invitations: all(

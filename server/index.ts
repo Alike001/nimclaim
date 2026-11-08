@@ -1,5 +1,7 @@
 import { HttpRpc } from "./rpc.js";
 import { createApp } from "./app.js";
+if (process.env.NIMCLAIM_STAGING === "1")
+  throw new Error("Staging must use npm run start:staging");
 const network = process.env.NETWORK ?? "testnet";
 if (network !== "testnet" && network !== "mainnet")
   throw new Error("NETWORK must be testnet or mainnet");
