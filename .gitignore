@@ -7,4 +7,15 @@ data/
 test-results/
 playwright-report/
 *.sqlite*
+*.db
+*.db-*
+# Local TLS/CA certificates, private keys and key stores are never publication assets.
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+*.jks
+*.keystore
 .local/

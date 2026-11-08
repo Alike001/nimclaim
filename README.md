@@ -103,7 +103,7 @@ Payment states are approved `payment-ready` (equivalent to PAYMENT_READY), SUBMI
 
 Safe server configuration is documented in `.env.example`: spending is off, no spending network/positive limit/RPC is configured. Optional independent `RPC_URL` must be HTTPS or loopback HTTP; `RPC_AUTHORIZATION` remains server-only. `PAYMENT_FEE_LUNA` fixes the requested fee (default zero). The server verifies exact fee as well as reward value. Per-payment amount caps and campaign allocation do not include transaction fees. None of this reserves funds on-chain.
 
-For physical testing, use the private-LAN HTTPS procedure and Caddy example linked above. No public development tunnel is needed or permitted by that procedure. Caddy and device trust have not been configured by the agent. **Mainnet readiness remains NO-GO.**
+For physical testing, use the private-LAN HTTPS procedure and Caddy example linked above. No public development tunnel is needed or permitted by that procedure. The private Caddy endpoint was started and verified locally; Android certificate trust and physical Nimiq Pay validation remain pending. Local certificates and keys are excluded from this repository. **Mainnet readiness remains NO-GO.**
 
 The follow-up [payer-authorized settlement review](docs/PAYER-SELECTED-SETTLEMENT.md) evaluates a possible versioned alternative to strict sender equality, documents what the native confirmation actually contains in pinned host source, and identifies physical testing requirements. The runtime policy is unchanged and mainnet remains NO-GO.
 
