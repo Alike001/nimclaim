@@ -1,3 +1,4 @@
+import { WalletDiagnostics } from "./WalletDiagnostics";
 import { CampaignWallet, Payout, PaymentStatus } from "./Payments";
 import type { PaymentGate } from "../shared/payments";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
@@ -64,7 +65,12 @@ export default function App() {
       <main>
         <Notice text={error} />
         {config &&
-          (hash.startsWith("#claim=") ? (
+          (hash === "#diagnostics" ? (
+            <>
+              <h1>Private device check</h1>
+              <WalletDiagnostics expectedNetwork={config.network} />
+            </>
+          ) : hash.startsWith("#claim=") ? (
             token ? (
               <Recipient key={token} token={token} config={config} />
             ) : (
@@ -668,6 +674,10 @@ function Recipient({ token, config }: { token: string; config: Config }) {
           Expires {date(c.expires)} · {config.network}
         </p>
       </section>
+      <details>
+        <summary>Read-only wallet diagnostics</summary>
+        <WalletDiagnostics expectedNetwork={config.network} />
+      </details>
       <Notice text={error} />
       {data.claim ? (
         <section className="panel">

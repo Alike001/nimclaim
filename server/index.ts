@@ -29,6 +29,7 @@ const { server, db } = createApp({
   path: process.env.DATABASE_PATH ?? "./data/nimclaim.sqlite",
   origin,
   network,
+  mobileTest: process.env.NIMCLAIM_MOBILE_TEST === "1",
   payments: {
     enabled: process.env.SPENDING_ENABLED === "true",
     spendingNetwork:

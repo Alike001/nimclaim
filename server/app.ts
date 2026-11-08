@@ -50,9 +50,14 @@ export interface Config {
   network: "testnet" | "mainnet";
   now?: () => number;
   staticDir?: string;
+  mobileTest?: boolean;
   payments?: Omit<PaymentOptions, "origin" | "network" | "now">;
 }
 export function createApp(config: Config) {
+  if (config.mobileTest && config.network !== "testnet")
+    throw new Error(
+      "Private mobile tests require an existing TESTNET installation.",
+    );
   if (new URL(config.origin).origin !== config.origin)
     throw new Error(
       "APP_ORIGIN must be an exact origin without trailing slash",
@@ -74,6 +79,7 @@ export function createApp(config: Config) {
   migratePayments(db);
   const payments = new Payments(db, {
     ...config.payments,
+    enabled: config.mobileTest ? false : config.payments?.enabled,
     origin: config.origin,
     network: config.network,
     now,
@@ -177,6 +183,7 @@ export function createApp(config: Config) {
           network: config.network,
           origin: config.origin,
           payments: payments.gate(),
+          mobileTest: config.mobileTest ?? false,
         });
       const session = /(?:^|;\s*)nimclaim_session=([a-f0-9]{64})(?:;|$)/.exec(
         req.headers.cookie ?? "",

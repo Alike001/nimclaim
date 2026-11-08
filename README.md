@@ -106,3 +106,16 @@ Safe server configuration is documented in `.env.example`: spending is off, no s
 For physical testing, use the private-LAN HTTPS procedure and Caddy example linked above. No public development tunnel is needed or permitted by that procedure. Caddy and device trust have not been configured by the agent. **Mainnet readiness remains NO-GO.**
 
 The follow-up [payer-authorized settlement review](docs/PAYER-SELECTED-SETTLEMENT.md) evaluates a possible versioned alternative to strict sender equality, documents what the native confirmation actually contains in pinned host source, and identifies physical testing requirements. The runtime policy is unchanged and mainnet remains NO-GO.
+
+## Private Android test
+
+The existing laptop organiser can stay open while an allowlisted phone uses a private HTTPS recipient link. See the current [running URL, CA instructions, role separation and screenshot checklist](docs/NIMIQ-PAY-TEST.md). The local launcher never runs setup or changes `.env`; it verifies the existing TESTNET database, creates an online backup, starts a separate loopback API and binds Caddy only to the selected private interface. Native dispatch remains disabled both at the proxy and in mobile server mode.
+
+```sh
+npm run mobile:status
+# Start only when no private instance is already running; use your verified current hotspot IPs:
+npm run mobile:start -- --bind-ip 192.168.186.152 --phone-ip 192.168.186.167
+npm run mobile:stop
+```
+
+The read-only `/#diagnostics` screen checks API/host network agreement and actual provider consensus/height without requesting accounts, signatures or payments. Android CA trust and real-device claim signing remain owner-operated checks; a green desktop check is not physical-device evidence.

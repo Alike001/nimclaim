@@ -1,17 +1,40 @@
-# Private LAN only. Set all three IP variables explicitly; never tunnel this listener.
+# Reference template only; npm run mobile:start generates and validates the active configuration.
+# Never tunnel this listener. Runtime state, CA keys and database backups stay in ignored .local.
 {
     admin off
     auto_https disable_redirects
+    skip_install_trust
 }
-
 https://{$MOBILE_BIND_IP}:8443 {
     bind {$MOBILE_BIND_IP}
     tls internal
-    @trusted remote_ip {$MOBILE_DESKTOP_IP} {$MOBILE_PHONE_IP}
-    handle @trusted {
-        reverse_proxy 127.0.0.1:3001
-    }
-    handle {
-        respond "Private mobile test only" 403
+    route {
+        @spending path_regexp spending ^/api/(claims/[^/]+/payment/reserve|payments/[^/]+/dispatch)$
+        respond @spending "Native payment dispatch is disabled for mobile testing" 403
+        @laptop remote_ip {$MOBILE_BIND_IP}
+        handle @laptop {
+            reverse_proxy 127.0.0.1:3002
+        }
+        @phoneRead {
+            remote_ip {$MOBILE_PHONE_IP}
+            method GET
+            path / /assets/* /api/config
+        }
+        handle @phoneRead {
+            reverse_proxy 127.0.0.1:3002 {
+                header_up -Cookie
+            }
+        }
+        @phoneClaim {
+            remote_ip {$MOBILE_PHONE_IP}
+            method POST
+            path /api/invitation /api/challenge /api/claim
+        }
+        handle @phoneClaim {
+            reverse_proxy 127.0.0.1:3002 {
+                header_up -Cookie
+            }
+        }
+        respond "Private mobile recipient test only" 403
     }
 }

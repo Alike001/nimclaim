@@ -60,5 +60,15 @@ export async function signChallenge(
 ) {
   if (getHostNetwork() !== network)
     throw new Error("Wallet network changed. Reconnect before signing.");
+  let challenge: { network?: string; origin?: string };
+  try {
+    challenge = JSON.parse(message);
+  } catch {
+    throw new Error("Server signing challenge is invalid.");
+  }
+  if (challenge.network !== network || challenge.origin !== location.origin)
+    throw new Error(
+      "Signing challenge network or origin does not match this page. Claim blocked.",
+    );
   return provider.sign(message);
 }
