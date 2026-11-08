@@ -1,0 +1,732 @@
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { api, nim, date, statusLabel, type Campaign, type Claim } from "./api";
+import { connectWallet, signChallenge, walletError } from "./wallet";
+
+type Config = { network: string; origin: string };
+function History({ claim }: { claim: Claim }) {
+  return (
+    <ol className="history">
+      {claim.history.map((event, i) => (
+        <li key={i}>
+          <strong>{statusLabel(event.status)}</strong>
+          <time dateTime={new Date(event.at).toISOString()}>
+            {date(event.at)}
+          </time>
+        </li>
+      ))}
+    </ol>
+  );
+}
+function Badge({ status }: { status: string }) {
+  return <span className={`badge ${status}`}>{statusLabel(status)}</span>;
+}
+function Notice({ text }: { text: string }) {
+  return text ? (
+    <p className="notice" role="alert">
+      {text}
+    </p>
+  ) : null;
+}
+export default function App() {
+  const [config, setConfig] = useState<Config>();
+  const [error, setError] = useState("");
+  const [hash, setHash] = useState(location.hash);
+  useEffect(() => {
+    api<Config>("/config")
+      .then(setConfig)
+      .catch((e) => setError(e.message));
+    const change = () => setHash(location.hash);
+    window.addEventListener("hashchange", change);
+    return () => window.removeEventListener("hashchange", change);
+  }, []);
+  const token = /^#claim=([a-f0-9]{64})$/.exec(hash)?.[1];
+  return (
+    <>
+      <header>
+        <a className="brand" href="#">
+          <span aria-hidden="true" className="mark">
+            N
+          </span>
+          NimClaim
+        </a>
+        <span className="network">{config?.network ?? "Connecting…"}</span>
+      </header>
+      <main>
+        <Notice text={error} />
+        {config &&
+          (hash.startsWith("#claim=") ? (
+            token ? (
+              <Recipient key={token} token={token} config={config} />
+            ) : (
+              <section className="panel">
+                <h1>Invalid invitation</h1>
+                <p>
+                  Check that you opened the complete link from your organiser.
+                </p>
+              </section>
+            )
+          ) : (
+            <Organiser />
+          ))}
+      </main>
+      <footer>
+        Native NIM rewards.{" "}
+        <strong>Transfers are disabled in this milestone.</strong>
+        <br />
+        Nimiq chain data is public. Approval is not proof of payment.
+      </footer>
+    </>
+  );
+}
+function Organiser() {
+  const [authenticated, setAuthenticated] = useState<boolean>();
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [selected, setSelected] = useState<string>();
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    const r = await api("/campaigns");
+    setCampaigns(r.campaigns);
+  }, []);
+  useEffect(() => {
+    api("/session")
+      .then((r) => setAuthenticated(r.authenticated))
+      .catch((e) => setError(e.message));
+  }, []);
+  useEffect(() => {
+    if (authenticated) load().catch((e) => setError(e.message));
+  }, [authenticated, load]);
+  async function login(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const password = new FormData(event.currentTarget).get("password");
+    setBusy(true);
+    setError("");
+    try {
+      await api("/login", { password });
+      setAuthenticated(true);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (authenticated === undefined)
+    return <p role="status">Loading organiser session…</p>;
+  if (!authenticated)
+    return (
+      <section className="panel auth">
+        <p className="eyebrow">Organiser workspace</p>
+        <h1>Rewards start here.</h1>
+        <p>
+          Create invitations, review signed claims and prepare contributor
+          rewards.
+        </p>
+        <form onSubmit={login}>
+          <label>
+            Organiser password
+            <input
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              maxLength={256}
+            />
+          </label>
+          <button disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
+        </form>
+        <Notice text={error} />
+        <p className="muted">
+          First visit? Run the local setup command in the README to create your
+          organiser credentials.
+        </p>
+        <p>Receiving a reward? Open the invitation from your organiser.</p>
+      </section>
+    );
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">Organiser workspace</p>
+          <h1>Your campaigns</h1>
+        </div>
+        <button
+          className="quiet"
+          onClick={async () => {
+            try {
+              await api("/logout", {});
+              setAuthenticated(false);
+              setSelected(undefined);
+              setCreating(false);
+            } catch (e) {
+              setError((e as Error).message);
+            }
+          }}
+        >
+          Sign out
+        </button>
+      </div>
+      <Notice text={error} />
+      {selected ? (
+        <CampaignDetail
+          id={selected}
+          back={() => {
+            setSelected(undefined);
+            load().catch((e) => setError(e.message));
+          }}
+        />
+      ) : creating ? (
+        <CreateCampaign
+          cancel={() => setCreating(false)}
+          created={(id) => {
+            setCreating(false);
+            setSelected(id);
+          }}
+        />
+      ) : (
+        <>
+          <div className="toolbar">
+            <p>
+              {campaigns.length} campaign{campaigns.length === 1 ? "" : "s"}
+            </p>
+            <button onClick={() => setCreating(true)}>
+              ＋ Create campaign
+            </button>
+          </div>
+          {campaigns.length === 0 ? (
+            <section className="panel empty">
+              <span className="empty-symbol" aria-hidden="true">
+                ↗
+              </span>
+              <h2>A reward for a contribution.</h2>
+              <p>
+                Create your first campaign, then share a unique invitation with
+                each contributor.
+              </p>
+              <button onClick={() => setCreating(true)}>
+                Create your first campaign
+              </button>
+            </section>
+          ) : (
+            <div className="campaign-grid">
+              {campaigns.map((c) => (
+                <button
+                  className="campaign-card"
+                  key={c.id}
+                  onClick={() => setSelected(c.id)}
+                >
+                  <span className="eyebrow">
+                    {c.expires <= Date.now() ? "Expired" : "Open for claims"}
+                  </span>
+                  <h2>{c.title}</h2>
+                  <p>{c.description}</p>
+                  <div className="amount">
+                    {nim(c.amount)} <small>NIM / reward</small>
+                  </div>
+                  <div className="card-meta">
+                    <span>
+                      {c.issued} / {c.slots} invitations
+                    </span>
+                    <span>{c.claimed} claims →</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+function CreateCampaign({
+  cancel,
+  created,
+}: {
+  cancel: () => void;
+  created: (id: string) => void;
+}) {
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const f = new FormData(event.currentTarget);
+    setBusy(true);
+    setError("");
+    try {
+      const r = await api("/campaigns", {
+        title: f.get("title"),
+        description: f.get("description"),
+        amount: f.get("amount"),
+        slots: Number(f.get("slots")),
+        expires: new Date(String(f.get("expires"))).getTime(),
+      });
+      created(r.campaign.id);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="panel">
+      <button className="text-button" onClick={cancel}>
+        ← All campaigns
+      </button>
+      <h2>Create a reward campaign</h2>
+      <p>
+        Each invitation reserves one reward slot. Campaign details are fixed
+        once created.
+      </p>
+      <form onSubmit={submit}>
+        <label>
+          Title
+          <input
+            name="title"
+            required
+            maxLength={100}
+            placeholder="Community contributions"
+          />
+        </label>
+        <label>
+          Description
+          <textarea
+            name="description"
+            required
+            maxLength={2000}
+            rows={3}
+            placeholder="What are you rewarding, and who is eligible?"
+          />
+        </label>
+        <div className="form-row">
+          <label>
+            Reward amount (NIM)
+            <input
+              name="amount"
+              type="number"
+              min="0.00001"
+              max="99999999.99999"
+              step="0.00001"
+              required
+              inputMode="decimal"
+            />
+          </label>
+          <label>
+            Available rewards
+            <input
+              name="slots"
+              type="number"
+              min="1"
+              max="1000"
+              step="1"
+              required
+              inputMode="numeric"
+            />
+          </label>
+        </div>
+        <label>
+          Expiry date and time (your local time)
+          <input name="expires" type="datetime-local" required />
+        </label>
+        <p className="muted">
+          No funds are held or sent. The amount is a reward commitment for
+          organiser review.
+        </p>
+        <Notice text={error} />
+        <button disabled={busy}>
+          {busy ? "Creating…" : "Create campaign"}
+        </button>
+      </form>
+    </section>
+  );
+}
+function CampaignDetail({ id, back }: { id: string; back: () => void }) {
+  const [data, setData] = useState<{
+    campaign: Campaign;
+    invitations: { id: string; created: number }[];
+    claims: Claim[];
+  }>();
+  const [error, setError] = useState(""),
+    [busy, setBusy] = useState(false),
+    [link, setLink] = useState(""),
+    [copied, setCopied] = useState(false);
+  const load = useCallback(
+    async () => setData(await api(`/campaigns/${id}`)),
+    [id],
+  );
+  useEffect(() => {
+    load().catch((e) => setError(e.message));
+    const timer = setInterval(() => {
+      if (!document.hidden) load().catch((e) => setError(e.message));
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [load]);
+  async function invite() {
+    setBusy(true);
+    setError("");
+    setCopied(false);
+    try {
+      const r = await api(`/campaigns/${id}/invitations`, {});
+      setLink(r.url);
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function decide(claim: Claim, decision: string) {
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/claims/${claim.id}/decision`, { decision });
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+      await load().catch(() => {});
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (!data)
+    return (
+      <>
+        <button className="text-button" onClick={back}>
+          ← All campaigns
+        </button>
+        <Notice text={error} />
+        <p role="status">Loading campaign…</p>
+      </>
+    );
+  const c = data.campaign,
+    expired = c.expires <= Date.now();
+  return (
+    <>
+      <button className="text-button" onClick={back}>
+        ← All campaigns
+      </button>
+      <section className="panel campaign-summary">
+        <p className="eyebrow">
+          {expired ? "Expired campaign" : "Reward campaign"}
+        </p>
+        <h2>{c.title}</h2>
+        <p className="description">{c.description}</p>
+        <div className="stats">
+          <div>
+            <strong>
+              {nim(c.amount)} <small>NIM</small>
+            </strong>
+            <span>per contributor</span>
+          </div>
+          <div>
+            <strong>
+              {data.invitations.length} / {c.slots}
+            </strong>
+            <span>invitations issued</span>
+          </div>
+          <div>
+            <strong>{data.claims.length}</strong>
+            <span>claims received</span>
+          </div>
+        </div>
+        <p className="muted">Expires {date(c.expires)}</p>
+      </section>
+      <section className="panel">
+        <h2>Invite a contributor</h2>
+        <p>
+          One link, one reward slot. Anyone with the link can request the
+          reward. Share it directly with the intended recipient.
+        </p>
+        <button
+          disabled={
+            busy || expired || data.invitations.length >= c.slots || !!link
+          }
+          onClick={invite}
+        >
+          {expired
+            ? "Campaign expired"
+            : data.invitations.length >= c.slots
+              ? "All invitations issued"
+              : "Create unique invitation"}
+        </button>
+        {link && (
+          <div className="link-box">
+            <label>
+              Save this invitation now. It cannot be retrieved later.
+              <textarea
+                rows={3}
+                readOnly
+                value={link}
+                onFocus={(e) => e.target.select()}
+              />
+            </label>
+            <div className="actions">
+              <button
+                className="secondary"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(link);
+                    setCopied(true);
+                  } catch {
+                    setError(
+                      "Clipboard unavailable. Select and copy the invitation manually.",
+                    );
+                  }
+                }}
+              >
+                {copied ? "Copied" : "Copy invitation"}
+              </button>
+              <button
+                className="text-button"
+                onClick={() => {
+                  setLink("");
+                  setCopied(false);
+                }}
+              >
+                I have saved this link
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+      <Notice text={error} />
+      <div className="toolbar">
+        <h2>Claims & history</h2>
+        <button
+          className="quiet"
+          onClick={() => load().catch((e) => setError(e.message))}
+        >
+          Refresh
+        </button>
+      </div>
+      <p className="muted">
+        Refreshes every 15 seconds while visible. Each wallet can claim once per
+        campaign.
+      </p>
+      {data.claims.length === 0 ? (
+        <section className="panel empty">
+          <h3>No claims yet</h3>
+          <p>Signed claims will appear here for your review.</p>
+        </section>
+      ) : (
+        data.claims.map((claim) => (
+          <section className="panel claim-card" key={claim.id}>
+            <Badge status={claim.status} />
+            <h3>Verified recipient</h3>
+            <code className="address">{claim.address}</code>
+            <History claim={claim} />
+            {claim.status === "pending" && (
+              <div className="actions">
+                <button
+                  disabled={busy || expired}
+                  onClick={() => decide(claim, "payment-ready")}
+                >
+                  Approve for payment
+                </button>
+                <button
+                  className="secondary"
+                  disabled={busy || expired}
+                  onClick={() => decide(claim, "rejected")}
+                >
+                  Reject claim
+                </button>
+              </div>
+            )}
+            {claim.status === "payment-ready" && (
+              <p className="muted">
+                Approved for {nim(c.amount)} NIM. No payment has been sent.
+              </p>
+            )}
+          </section>
+        ))
+      )}
+    </>
+  );
+}
+function Recipient({ token, config }: { token: string; config: Config }) {
+  const [data, setData] = useState<{
+    campaign: Campaign;
+    expired: boolean;
+    claim: Claim | null;
+  }>();
+  const [wallet, setWallet] =
+    useState<Awaited<ReturnType<typeof connectWallet>>>();
+  const [challenge, setChallenge] = useState<{
+    id: string;
+    message: string;
+    expires: number;
+  }>();
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const load = useCallback(
+    async () => setData(await api("/invitation", { token })),
+    [token],
+  );
+  useEffect(() => {
+    setData(undefined);
+    setChallenge(undefined);
+    setWallet(undefined);
+    setError("");
+    load().catch((e) => setError(e.message));
+    const timer = setInterval(() => {
+      if (!document.hidden) load().catch((e) => setError(e.message));
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [load]);
+  async function connect() {
+    setBusy(true);
+    setError("");
+    try {
+      setWallet(await connectWallet(config.network));
+      setChallenge(await api("/challenge", { token }));
+    } catch (e) {
+      setError(walletError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function claim() {
+    if (!wallet || !challenge) return;
+    setBusy(true);
+    setError("");
+    try {
+      const signed = await signChallenge(
+        wallet.provider,
+        challenge.message,
+        config.network,
+      );
+      await api("/claim", {
+        token,
+        challengeId: challenge.id,
+        publicKey: signed.publicKey,
+        signature: signed.signature,
+      });
+      setChallenge(undefined);
+      await load();
+    } catch (e) {
+      setError(walletError(e));
+      await load().catch(() => {});
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (!data)
+    return (
+      <section className="panel">
+        <h1>Your reward invitation</h1>
+        <Notice text={error} />
+        {!error && <p role="status">Loading invitation…</p>}
+        <button
+          className="quiet"
+          onClick={() => {
+            setError("");
+            load().catch((e) => setError(e.message));
+          }}
+        >
+          Retry
+        </button>
+      </section>
+    );
+  const c = data.campaign;
+  return (
+    <div className="recipient">
+      <p className="eyebrow">Contributor invitation</p>
+      <h1>{c.title}</h1>
+      <p className="description">{c.description}</p>
+      <section className="panel reward">
+        <span>Your reward commitment</span>
+        <div className="reward-amount">
+          {nim(c.amount)} <small>NIM</small>
+        </div>
+        <p>
+          Subject to organiser approval. Funds have not been reserved or sent.
+        </p>
+        <p className="muted">
+          Expires {date(c.expires)} · {config.network}
+        </p>
+      </section>
+      <Notice text={error} />
+      {data.claim ? (
+        <section className="panel">
+          <Badge status={data.claim.status} />
+          <h2>
+            {data.claim.status === "payment-ready"
+              ? "Approved. Awaiting payment."
+              : data.claim.status === "pending"
+                ? "Your request is with the organiser."
+                : "Your claim is closed."}
+          </h2>
+          <p>Wallet ownership verified for:</p>
+          <code className="address">{data.claim.address}</code>
+          <History claim={data.claim} />
+          <p>No NIM has been transferred through NimClaim.</p>
+        </section>
+      ) : data.expired ? (
+        <section className="panel">
+          <h2>This invitation has expired.</h2>
+          <p>Contact your organiser about future rewards.</p>
+        </section>
+      ) : (
+        <section className="panel">
+          <p className="eyebrow">Wallet ownership</p>
+          <h2>Claim with Nimiq Pay</h2>
+          <p>
+            Connect your wallet, then sign a one-time request. Nimiq Pay chooses
+            the signing account. The server verifies its signature before saving
+            your claim.
+          </p>
+          {wallet && (
+            <p className="wallet-status" role="status">
+              Nimiq Pay connected · {wallet.network}
+              <br />
+              Consensus:{" "}
+              {wallet.consensus === null
+                ? "unavailable"
+                : wallet.consensus
+                  ? "established"
+                  : "syncing"}{" "}
+              · Block: {wallet.height ?? "unavailable"}
+            </p>
+          )}
+          <button
+            className={challenge ? "secondary" : ""}
+            disabled={busy}
+            onClick={connect}
+          >
+            {busy && !challenge
+              ? "Connecting…"
+              : challenge
+                ? "Refresh signing request"
+                : "Connect Nimiq Pay"}
+          </button>
+          {challenge && (
+            <>
+              <p>
+                This signature requests {nim(c.amount)} NIM from this campaign
+                on {config.network}. It expires at {date(challenge.expires)}.
+              </p>
+              <details>
+                <summary>Review exact message</summary>
+                <pre>{challenge.message}</pre>
+              </details>
+              <button disabled={busy} onClick={claim}>
+                {busy ? "Waiting for wallet…" : "Sign & submit claim"}
+              </button>
+            </>
+          )}
+          <p className="muted">
+            Your invitation is a secret access link. Its holder can view this
+            claim and its verified wallet address. Signing does not send a
+            transaction.
+          </p>
+        </section>
+      )}
+      <button
+        className="quiet"
+        disabled={busy}
+        onClick={() => load().catch((e) => setError(e.message))}
+      >
+        Refresh claim status
+      </button>
+    </div>
+  );
+}

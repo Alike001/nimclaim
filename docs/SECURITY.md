@@ -1,0 +1,44 @@
+# Security and API contract
+
+This is a development vertical slice, not an audited payments service. There is no transaction submission or paid status.
+
+## Boundaries
+
+- Setup generates 256-bit random organiser credentials; passwords are salted and hashed with scrypt. Login issues a 256-bit random HttpOnly, SameSite=Strict session cookie with an eight-hour absolute expiry; only its SHA-256 hash is stored. HTTPS also sets Secure. Logout deletes the session. Sessions survive server restarts and expire server-side.
+- Every POST requires the exact configured Origin and JSON content type; request bodies are capped at 16 KiB. Zod validates strict input shapes and rejects extra signer/address fields. Administrative APIs require a valid session. Public claim APIs require a 256-bit invitation token. There is no CORS allowance.
+- No third-party frontend resources or analytics. Production CSP restricts resources to the app's origin. Responses are no-store and no-referrer; links carry tokens in fragments. Application error logs do not contain request bodies. Infrastructure must also avoid logging bodies, cookies and signatures.
+- Process-local IP rate limits: 10 login requests/minute; 180 other API requests/minute. No forwarded IP headers are trusted. Behind a reverse proxy these limits are shared by all users; durable per-client limiting and carefully configured proxy trust are required for public deployment. Login work uses synchronous scrypt, suitable for this bounded local installation.
+
+## Wallet protocol
+
+1. Browser calls official SDK `init({timeout:3000})` only on a connect click. Timeout yields a wallet-unavailable state. `getHostNetwork()` must match the server config; older hosts without network context fail closed.
+2. `listAccounts()` requests sharing consent, with normalized `NimiqProviderError.is()` handling. The list is never submitted as ownership evidence or used to select a signer. Consensus/block calls use independent settled results; failures show unavailable rather than invented values. Their success is not signature proof.
+3. Server validates token, campaign expiry and unused invitation, then creates a five-minute challenge capped at campaign expiry. Unconsumed earlier challenges for that invitation are invalidated. Refreshing the signing request in another tab can therefore invalidate an open prompt; request a new one if that occurs.
+4. Server constructs an ASCII JSON message bound to `NimClaim/claim/v1`, request purpose, exact origin, network, immutable campaign/invitation IDs, token hash, exact Luna amount, random 256-bit nonce and expiration. No frontend-chosen address is bound because the wallet chooses its signer. The proof binds the eventual verified signing key to this exact claim request.
+5. Browser passes the exact message to `sign(message)` and submits only token, challenge ID, public key and signature. Normalized wallet rejections are ordinary outcomes; original non-wallet/status errors remain distinct. Unknown host error types are retained in diagnostic text.
+6. Server retrieves the original stored message, validates invitation/nonce expiry and non-use and checks its origin/network against current configuration. It recreates the official `\x16Nimiq Signed Message:\n` + decimal byte length + message envelope, hashes with SHA-256 and verifies Ed25519 through Nimiq core. Current Nimiq core verifies via `PublicKey.verify(Signature.fromHex(...), digest)`. It derives the address from the verified public key. Raw message signatures, client-supplied messages and claimed addresses are not accepted.
+7. In one SQLite write transaction, the server creates a pending claim, consumes its challenge and records the initial history event. Unique constraints prevent multiple claims per invitation/challenge and per wallet/campaign. Failed invalid proofs do not consume the challenge; rate limits and expiry bound retries.
+8. A separate authenticated decision transaction changes an unexpired pending claim to payment-ready or rejected exactly once and records its history. No subsequent decision can override it. Campaign expiration transitions pending claims to expired on the next API request, recording the campaign expiry time. Unused links become unusable at the same deadline. Approved unpaid commitments remain payment-ready after campaign expiry.
+
+A network cannot be changed for an existing database. Use a separate database for each network. Signatures attest the network string in the request; message signatures themselves do not prove blockchain network connectivity. Host network context is a client compatibility check; the backend security rests on signature verification of its own domain-bound challenge.
+
+## Endpoint inventory
+
+All paths below are under `/api`. All POST bodies must have `Content-Type: application/json` and `Origin: APP_ORIGIN`.
+
+| Method/path                       | Authority                    | Body / purpose                                                                                 |
+| --------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| GET `/config`                     | Public                       | Expected origin and Nimiq network                                                              |
+| GET `/session`                    | Cookie                       | Authentication state                                                                           |
+| POST `/login`                     | Password                     | `{password}` → session cookie                                                                  |
+| POST `/logout`                    | Cookie                       | `{}` → revoke session                                                                          |
+| GET `/campaigns`                  | Organiser                    | List campaigns and actual counts                                                               |
+| POST `/campaigns`                 | Organiser                    | `{title,description,amount,slots,expires}`; decimal NIM string, integer slots, epoch-ms expiry |
+| GET `/campaigns/:id`              | Organiser                    | Campaign, invitation IDs, claims and events; never plaintext invitation tokens                 |
+| POST `/campaigns/:id/invitations` | Organiser                    | `{}` → one unique invitation URL, returned once                                                |
+| POST `/invitation`                | Invitation token             | `{token}` → campaign and claim/status/history                                                  |
+| POST `/challenge`                 | Invitation token             | `{token}` → `{id,message,expires,network}`                                                     |
+| POST `/claim`                     | Invitation token + signature | `{token,challengeId,publicKey,signature}` → unique pending claim                               |
+| POST `/claims/:id/decision`       | Organiser                    | `{decision:"payment-ready"                                                                     | "rejected"}` |
+
+Errors use `{error:string}`: 400 input, 401 credentials/signature, 403 origin, 404 missing resource, 409 conflict/replay, 410 expiry, 413 oversized body, 415 content type, 429 rate limit. Expiration is evaluated using the server clock. Run hosts with synchronized clocks. Stored timestamps and Luna amounts are integers.

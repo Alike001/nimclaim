@@ -1,0 +1,48 @@
+{
+  "name": "nimclaim",
+  "version": "0.1.0",
+  "description": "Signed contributor reward claims for Nimiq Pay",
+  "scripts": {
+    "setup": "tsx --env-file-if-exists=.env server/setup.ts",
+    "dev": "concurrently -k -n api,web \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "tsx --env-file-if-exists=.env watch server/index.ts",
+    "dev:web": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && vite build",
+    "start": "NODE_ENV=production tsx --env-file-if-exists=.env server/index.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "test:browser": "playwright test --project=desktop-chromium && playwright test --project=mobile-chromium --output=test-results/mobile",
+    "check": "npm run test && npm run build && npm run test:runtime && npm run test:browser",
+    "test:runtime": "tsx --test tests/runtime/*.test.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@nimiq/core": "^2.23.0",
+    "@nimiq/mini-app-sdk": "^0.2.5",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "concurrently": "^10.0.7",
+    "prettier": "^3.9.10",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=24.14.0"
+  }
+}
