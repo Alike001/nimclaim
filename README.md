@@ -42,7 +42,7 @@ npm run format:check     # formatting verification
 npm audit --omit=dev
 ```
 
-Stop any existing dev servers before `test:browser`; it needs ports 3001 and 5173 and deliberately refuses to reuse running applications. Each device suite starts a fresh isolated server so the aggregate test burst does not exhaust the development IP rate limit. Tests never use `data/nimclaim.sqlite`. Browser screenshots and failure traces are written to ignored `test-results/`. Synthetic test signatures exercise the real server verifier. They do not demonstrate a physical Nimiq Pay integration.
+By default `test:browser` needs ports 3001 and 5173 and deliberately refuses to reuse running applications. If they are occupied, use the isolated test-port overrides below. Each device suite starts a fresh isolated server so the aggregate test burst does not exhaust the development IP rate limit. Tests never use `data/nimclaim.sqlite`. Browser screenshots and failure traces are written to ignored `test-results/`. Synthetic test signatures exercise the real server verifier. They do not demonstrate a physical Nimiq Pay integration.
 
 Production mode serves `dist/` and the API from one process:
 
@@ -83,6 +83,18 @@ Cachet is workflow inspiration only (campaign → invitation → review); its de
 
 MIT licensed. See [LICENSE](LICENSE).
 
+## Node 24 development startup
+
+`npm run dev:api` uses `node --watch --env-file-if-exists=.env --import tsx server/index.ts`. The previous `tsx --env-file-if-exists=.env watch ...` placement made Node resolve `watch` as an entry file and fail with `ERR_MODULE_NOT_FOUND`. The regression smoke test runs the exact npm script with copied real source, a disposable `.env` and database, verifies API/authentication, then edits only its disposable entry point to prove watch restart and record/session persistence. It never uses the existing installation's credentials.
+
+If your dev servers already occupy ports 3001/5173, keep them running and use separate test listeners:
+
+```sh
+NIMCLAIM_TEST_API_PORT=3107 NIMCLAIM_TEST_WEB_PORT=5197 npm run check
+```
+
+These optional test overrides coordinate Playwright, its isolated API and Vite's local proxy. Default ports and backend runtime settings are unchanged. Tests still refuse to reuse existing servers.
+
 ## Native payout gate
 
 The official `sendBasicTransaction({recipient,value,fee,validityStartHeight})` adapter is present. Authenticated organisers review exact NIM/Luna values and sign a one-time authorization; the backend would reserve immutable intent and consume a one-time dispatch permit before the wallet request. Current production deliberately lacks a trusted selected-sender commitment because the SDK does not provide one. No frontend toggle or environment flag bypasses it. A signing address is not proof of the payment sender.
@@ -92,3 +104,5 @@ Payment states are approved `payment-ready` (equivalent to PAYMENT_READY), SUBMI
 Safe server configuration is documented in `.env.example`: spending is off, no spending network/positive limit/RPC is configured. Optional independent `RPC_URL` must be HTTPS or loopback HTTP; `RPC_AUTHORIZATION` remains server-only. `PAYMENT_FEE_LUNA` fixes the requested fee (default zero). The server verifies exact fee as well as reward value. Per-payment amount caps and campaign allocation do not include transaction fees. None of this reserves funds on-chain.
 
 For physical testing, use the private-LAN HTTPS procedure and Caddy example linked above. No public development tunnel is needed or permitted by that procedure. Caddy and device trust have not been configured by the agent. **Mainnet readiness remains NO-GO.**
+
+The follow-up [payer-authorized settlement review](docs/PAYER-SELECTED-SETTLEMENT.md) evaluates a possible versioned alternative to strict sender equality, documents what the native confirmation actually contains in pinned host source, and identifies physical testing requirements. The runtime policy is unchanged and mainnet remains NO-GO.

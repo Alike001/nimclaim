@@ -1,5 +1,30 @@
 # Native payout implementation report
 
+## Follow-up: Node 24 startup and settlement review
+
+Continued from `5f4ac639` on 8 November 2026. The initial working tree already contained a proposed `dev:api` script correction; it was retained and verified. On Node **24.14.1**, the committed `tsx --env-file-if-exists=.env watch server/index.ts` command reproduced `ERR_MODULE_NOT_FOUND` resolving `watch` as a file. The corrected command is `node --watch --env-file-if-exists=.env --import tsx server/index.ts`.
+
+The new `tests/runtime/dev-startup.test.ts` runs the exact package script against copied real server/shared source and a disposable `.env`/SQLite database. It checks API readiness, env loading, authentication and a watched restart preserving the test session and campaign. It never starts the actual installation or uses its credentials. An existing listener on port 3001 was left untouched: the initial aggregate run stopped at Playwright's port conflict, then all 26 browser tests passed with isolated ports 3107/5197. Optional `NIMCLAIM_TEST_API_PORT` and `NIMCLAIM_TEST_WEB_PORT` overrides now coordinate test API, Vite proxy and Playwright; defaults remain 3001/5173 and running services are never reused.
+
+**Current verification:** the complete `npm run check` sequence passed with isolated test ports: 48 unit/API/native/RPC tests, 2 runtime tests, and 26 desktop/mobile browser tests (**76 total**); TypeScript and production build passed. Formatting passed and `npm audit` reported zero vulnerabilities. See the commands below. The historical 75-test report that follows predates the extra development startup regression.
+
+The [payer-selected settlement review](PAYER-SELECTED-SETTLEMENT.md) checks current official SDK docs, installed 0.2.5 typings and official host source pinned to `dd90a9c5443be3f4e0ddeac454486c9d512fcae3` (source package version 2.23.0). It documents native confirmation fields, the local message-signing key versus HTLC funding account, host-chosen validity height, current verifier incompatibilities and the smallest versioned wallet-owner-authorized alternative. Source evidence is not physical-device evidence.
+
+**NO-GO remains.** This task evaluates and documents the alternative; it does not implement a new settlement policy. Existing payout guards, schema, reservations, recipient/amount binding, RPC verification, hash uniqueness, permanent UNKNOWN locks and no-auto-retry behavior are unchanged. Real records, `.env` and credentials were preserved. No real wallet call/signature/payment, live-spending enablement, deployment or push occurred.
+
+```sh
+# Keep existing development servers running; these listeners are only for isolated tests.
+NIMCLAIM_TEST_API_PORT=3107 NIMCLAIM_TEST_WEB_PORT=5197 npm run check
+npm run format:check
+npm audit
+```
+
+Changed files in this follow-up: `package.json`, `playwright.config.ts`, `vite.config.ts`, `tests/browser-server.ts`, `tests/runtime/dev-startup.test.ts`, `README.md`, `docs/MAINNET-READINESS.md`, `docs/PAYMENTS.md`, `docs/PAYER-SELECTED-SETTLEMENT.md`, and `docs/REPORT.md`.
+
+## Previous payout milestone
+
+The sections below record the implementation and evidence from the preceding `5f4ac639` milestone.
+
 Date: 8 November 2026. Continued on `main` from `b762d0f6f2467f58afdd626d4afb66bc30efe6be`; the original campaign/invitation/claim/review flow is retained.
 
 **NO-GO for one real mainnet transaction.** Safe payment infrastructure is implemented, but a usable production broadcast path cannot satisfy the required pre-broadcast sender guarantee with the installed official SDK. `sendBasicTransaction()` has no sender parameter or documented verifiable selected-sender commitment. `sign()` and `listAccounts()` cannot establish the next payment sender. Production therefore denies payment reservations and dispatches even if environment flags are enabled. No missing capability is fabricated.

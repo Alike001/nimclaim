@@ -6,6 +6,12 @@ The [official provider reference](https://nimiq.dev/mini-apps/api-reference/nimi
 
 The production server never provides `verifySelectedSender`. Payment services receive that dependency only in isolated deterministic tests, where it represents a synthetic trusted commitment. It must not be replaced in production with an address-list or signing-key comparison. A future adapter must verify a commitment that remains bound to the exact intent through actual native dispatch. Installing such an adapter is an implementation/security-review milestone, not an environment change.
 
+## Current host compatibility findings
+
+The [payer-authorized settlement review](PAYER-SELECTED-SETTLEMENT.md) now includes pinned official host-source evidence. Ordinary native payments there use an HTLC source, and the basic handler does not forward the caller's validity-start height. The existing verifier deliberately requires a basic sender and exact requested height. Its basic-account fixtures therefore do not prove live native compatibility, even if address binding were relaxed. The production spending gate remains closed; no payout rule was changed by this investigation.
+
+A wallet-owner-authorized alternative is conditionally viable with explicit consent and a new immutable policy/reference model. It is not the same as the SDK choosing an address and is not implemented in this build. Existing strict intents and UNKNOWN attempts must retain their original semantics.
+
 ## Protocol
 
 1. The authenticated installation organiser can request a campaign-specific wallet-binding challenge. Its domain, purpose, origin, network, allocation, nonce, session hash and expiry are server-bound. Server verification derives the signing address and freezes a campaign-wallet record. This is an authorization role, **not sending-account evidence**. Existing campaigns can bind their wallet without losing their prior invitations or claims.

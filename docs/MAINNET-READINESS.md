@@ -4,9 +4,17 @@
 
 The repository implements payment reservation, native-call adapter, reconciliation and receipt display, but deliberately does not install a production sender-assurance adapter. Its dependency-injection seam is exercised only with synthetic assurances in tests. There is **no environment variable or frontend switch that installs that missing capability**. `SPENDING_ENABLED=true` alone cannot authorize a request. An honest mainnet GO requires a future documented provider capability or an explicitly agreed alternative payment interface and a reviewed implementation change.
 
+## Follow-up: payer-authorized alternative evaluated
+
+The [current sender/confirmation review](PAYER-SELECTED-SETTLEMENT.md) distinguishes a viable **wallet-owner-authorized** funding policy from unsupported exact-address selection. It inspects the official native host at commit `dd90a9c5443be3f4e0ddeac454486c9d512fcae3`, not just SDK typings. This is a proposed alternative, not an implemented or approved relaxation of the current strict policy.
+
+The source NIM sheet has no sender row/account selector or explicit network row; recipient display is abbreviated, and amount formatting defaults to two decimals. Ordinary payments use an HTLC source while the current verifier requires a basic source. Supplied validity height is not forwarded by the inspected handler. Removing only the sender check would therefore be unsafe and insufficient.
+
+**NO-GO remains.** A future wallet-owner policy needs explicit informed consent, separate approval/funding identities, an immutable unique payment reference, HTLC-aware verification, safe handling of host-chosen validity height, backward-compatible policy versioning and physical validation. No existing record or UNKNOWN reservation may be reinterpreted. The smallest design and device acceptance criteria are in the linked review.
+
 ## Gates before even requesting approval to spend
 
-- [ ] Supported pre-broadcast sender binding is documented and implemented. It must commit the exact sender to the same immutable intent and eventual native broadcast, not merely snapshot an account that could change after the check.
+- [ ] Explicitly select and implement a reviewed policy. The current strict model requires supported pre-broadcast sender binding to the exact intent/broadcast. A new wallet-owner model requires the versioned consent/correlation/verification design in the review; a successful signature or shared-account list satisfies neither requirement by itself.
 - [ ] Test a dedicated physical Nimiq Pay device over trusted private HTTPS. Observe account sharing, message signing, exact sender selection/commitment, payment confirmation, fee behavior, returned hash and denial cases. No current on-device result is claimed.
 - [ ] Run the payout flow physically on testnet after the sender blocker is resolved. Verify independent RPC matching, inclusion, execution success and following-macro finality. Test cancellation, native timeout, browser close, lost API responses and restart without retrying uncertain attempts.
 - [ ] Configure a trusted, independent mainnet full/history node implementing official RPC methods. Confirm `getNetworkId = MainAlbatross`, ID 24 in transactions, consensus, historical transaction bodies and justified following macro blocks. No third-party endpoint is silently chosen. The RPC node is the chain trust boundary; the app does not perform light-client cryptographic verification of macro proofs.

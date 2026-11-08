@@ -5,7 +5,7 @@
   "scripts": {
     "setup": "tsx --env-file-if-exists=.env server/setup.ts",
     "dev": "concurrently -k -n api,web \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:api": "tsx --env-file-if-exists=.env watch server/index.ts",
+    "dev:api": "node --watch --env-file-if-exists=.env --import tsx server/index.ts",
     "dev:web": "vite",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && vite build",

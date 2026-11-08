@@ -4,8 +4,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: "127.0.0.1",
-    port: 5173,
+    port: Number(process.env.NIMCLAIM_TEST_WEB_PORT ?? 5173),
     strictPort: true,
-    proxy: { "/api": "http://127.0.0.1:3001" },
+    proxy: {
+      "/api": `http://127.0.0.1:${Number(process.env.NIMCLAIM_TEST_API_PORT ?? 3001)}`,
+    },
   },
 });
