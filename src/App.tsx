@@ -1,5 +1,15 @@
+import { CampaignWallet, Payout, PaymentStatus } from "./Payments";
+import type { PaymentGate } from "../shared/payments";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { api, nim, date, statusLabel, type Campaign, type Claim } from "./api";
+import {
+  api,
+  nim,
+  date,
+  statusLabel,
+  claimStatus,
+  type Campaign,
+  type Claim,
+} from "./api";
 import { connectWallet, signChallenge, walletError } from "./wallet";
 
 type Config = { network: string; origin: string };
@@ -71,7 +81,7 @@ export default function App() {
       </main>
       <footer>
         Native NIM rewards.{" "}
-        <strong>Transfers are disabled in this milestone.</strong>
+        <strong>Native spending is gated on the server.</strong>
         <br />
         Nimiq chain data is public. Approval is not proof of payment.
       </footer>
@@ -342,6 +352,8 @@ function CreateCampaign({
 function CampaignDetail({ id, back }: { id: string; back: () => void }) {
   const [data, setData] = useState<{
     campaign: Campaign;
+    wallet: { address: string } | null;
+    paymentGate: PaymentGate;
     invitations: { id: string; created: number }[];
     claims: Claim[];
   }>();
@@ -430,6 +442,12 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
         </div>
         <p className="muted">Expires {date(c.expires)}</p>
       </section>
+      <CampaignWallet
+        campaignId={id}
+        wallet={data.wallet}
+        gate={data.paymentGate}
+        reload={load}
+      />
       <section className="panel">
         <h2>Invite a contributor</h2>
         <p>
@@ -510,7 +528,7 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
       ) : (
         data.claims.map((claim) => (
           <section className="panel claim-card" key={claim.id}>
-            <Badge status={claim.status} />
+            <Badge status={claimStatus(claim)} />
             <h3>Verified recipient</h3>
             <code className="address">{claim.address}</code>
             <History claim={claim} />
@@ -531,10 +549,14 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
                 </button>
               </div>
             )}
-            {claim.status === "payment-ready" && (
+            {claim.status === "payment-ready" && !claim.payment && (
               <p className="muted">
-                Approved for {nim(c.amount)} NIM. No payment has been sent.
+                Approved for {nim(c.amount)} NIM. Approval alone does not prove
+                payment.
               </p>
+            )}
+            {claim.status === "payment-ready" && (
+              <Payout claim={claim} reload={load} />
             )}
           </section>
         ))
@@ -638,7 +660,9 @@ function Recipient({ token, config }: { token: string; config: Config }) {
           {nim(c.amount)} <small>NIM</small>
         </div>
         <p>
-          Subject to organiser approval. Funds have not been reserved or sent.
+          {data.claim?.payment
+            ? "Payment details and independently verified outcomes are shown below. No funds are held in escrow."
+            : "Subject to organiser approval. Funds have not been reserved or sent."}
         </p>
         <p className="muted">
           Expires {date(c.expires)} · {config.network}
@@ -647,18 +671,27 @@ function Recipient({ token, config }: { token: string; config: Config }) {
       <Notice text={error} />
       {data.claim ? (
         <section className="panel">
-          <Badge status={data.claim.status} />
+          <Badge status={claimStatus(data.claim)} />
           <h2>
-            {data.claim.status === "payment-ready"
-              ? "Approved. Awaiting payment."
-              : data.claim.status === "pending"
-                ? "Your request is with the organiser."
-                : "Your claim is closed."}
+            {claimStatus(data.claim) === "paid"
+              ? "Your reward is paid."
+              : claimStatus(data.claim) === "failed"
+                ? "Payment failed. Reward unpaid."
+                : data.claim.payment
+                  ? "Payment verification is pending."
+                  : data.claim.status === "payment-ready"
+                    ? "Approved. Awaiting payment."
+                    : data.claim.status === "pending"
+                      ? "Your request is with the organiser."
+                      : "Your claim is closed."}
           </h2>
           <p>Wallet ownership verified for:</p>
           <code className="address">{data.claim.address}</code>
           <History claim={data.claim} />
-          <p>No NIM has been transferred through NimClaim.</p>
+          {!data.claim.payment && (
+            <p>No NIM has been transferred through NimClaim.</p>
+          )}
+          <PaymentStatus payment={data.claim.payment} />
         </section>
       ) : data.expired ? (
         <section className="panel">

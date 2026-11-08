@@ -4,3 +4,5 @@ data
 test-results
 playwright-report
 package-lock.json
+.local
+ops/Caddyfile.mobile.example

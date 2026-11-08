@@ -1,0 +1,17 @@
+# Private LAN only. Set all three IP variables explicitly; never tunnel this listener.
+{
+    admin off
+    auto_https disable_redirects
+}
+
+https://{$MOBILE_BIND_IP}:8443 {
+    bind {$MOBILE_BIND_IP}
+    tls internal
+    @trusted remote_ip {$MOBILE_DESKTOP_IP} {$MOBILE_PHONE_IP}
+    handle @trusted {
+        reverse_proxy 127.0.0.1:3001
+    }
+    handle {
+        respond "Private mobile test only" 403
+    }
+}

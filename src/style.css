@@ -482,3 +482,38 @@ footer strong {
     font-size: 44px;
   }
 }
+.payment-review,
+.payment-status {
+  border-top: 1px solid #dbe2d9;
+  margin-top: 22px;
+  padding-top: 18px;
+}
+.payment-facts {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 8px 18px;
+  font-size: 14px;
+}
+.payment-facts dt {
+  font-weight: 650;
+}
+.payment-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.payment-status a {
+  color: #195c48;
+  text-decoration: underline;
+}
+.payment-review button {
+  margin: 8px 0;
+}
+@media (max-width: 600px) {
+  .payment-facts {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .payment-facts dd {
+    margin-bottom: 12px;
+  }
+}

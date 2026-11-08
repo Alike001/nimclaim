@@ -8,6 +8,14 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve, extname } from "node:path";
 import { z } from "zod";
 import { openDb, atomic } from "./db.js";
+import { migratePayments } from "./payment-schema.js";
+import {
+  Payments,
+  PaymentError,
+  proofSchema,
+  type PaymentOptions,
+} from "./payments.js";
+import { hashSchema } from "./rpc.js";
 import { checkPassword, digest, randomToken, verifyOwner } from "./crypto.js";
 
 type Row = Record<string, any>; // SQLite rows are validated at the API boundary.
@@ -42,6 +50,7 @@ export interface Config {
   network: "testnet" | "mainnet";
   now?: () => number;
   staticDir?: string;
+  payments?: Omit<PaymentOptions, "origin" | "network" | "now">;
 }
 export function createApp(config: Config) {
   if (new URL(config.origin).origin !== config.origin)
@@ -62,6 +71,13 @@ export function createApp(config: Config) {
   db.prepare("INSERT OR IGNORE INTO settings VALUES ('network',?)").run(
     config.network,
   );
+  migratePayments(db);
+  const payments = new Payments(db, {
+    ...config.payments,
+    origin: config.origin,
+    network: config.network,
+    now,
+  });
   const get = (sql: string, ...args: any[]) =>
     db.prepare(sql).get(...args) as Row | undefined;
   const all = (sql: string, ...args: any[]) =>
@@ -109,6 +125,7 @@ export function createApp(config: Config) {
       address: claim.address,
       status: claim.status,
       created: claim.created,
+      payment: payments.view(claim.id),
       history: all(
         "SELECT status,at FROM events WHERE claim_id=? ORDER BY id",
         claim.id,
@@ -156,7 +173,11 @@ export function createApp(config: Config) {
       }
       expire();
       if (path === "/api/config" && req.method === "GET")
-        return send(200, { network: config.network, origin: config.origin });
+        return send(200, {
+          network: config.network,
+          origin: config.origin,
+          payments: payments.gate(),
+        });
       const session = /(?:^|;\s*)nimclaim_session=([a-f0-9]{64})(?:;|$)/.exec(
         req.headers.cookie ?? "",
       )?.[1];
@@ -319,6 +340,75 @@ export function createApp(config: Config) {
         return send(201, { claim: result });
       }
       if (!authorised) fail(401, "Sign in as organiser to continue.");
+      const walletRoute =
+        /^\/api\/campaigns\/([a-f0-9-]{36})\/wallet(?:\/(challenge))?$/.exec(
+          path,
+        );
+      if (walletRoute && req.method === "POST") {
+        const result = walletRoute[2]
+          ? (z.object({}).strict().parse(body),
+            payments.challenge(walletRoute[1], digest(session!)))
+          : payments.bind(
+              walletRoute[1],
+              digest(session!),
+              proofSchema.parse(body),
+            );
+        return send(walletRoute[2] ? 201 : 200, result);
+      }
+      const paymentRoute =
+        /^\/api\/claims\/([a-f0-9-]{36})\/payment\/(review|challenge|reserve)$/.exec(
+          path,
+        );
+      if (paymentRoute && req.method === "POST") {
+        const [, claimId, action] = paymentRoute;
+        if (action === "reserve")
+          return send(
+            201,
+            await payments.reserve(
+              claimId,
+              digest(session!),
+              proofSchema.parse(body),
+            ),
+          );
+        z.object({}).strict().parse(body);
+        const review = payments.review(claimId);
+        return send(
+          action === "review" ? 200 : 201,
+          action === "review"
+            ? review
+            : payments.challenge(review.campaignId, digest(session!), claimId),
+        );
+      }
+      const attemptRoute =
+        /^\/api\/payments\/([a-f0-9-]{36})\/(dispatch|outcome|reconcile)$/.exec(
+          path,
+        );
+      if (attemptRoute && req.method === "POST") {
+        const [, id, action] = attemptRoute;
+        if (action === "dispatch") {
+          const { permit } = z
+            .object({ permit: tokenSchema })
+            .strict()
+            .parse(body);
+          return send(200, payments.dispatch(id, permit));
+        }
+        if (action === "outcome") {
+          const input = z
+            .object({
+              outcome: z.enum(["hash", "cancelled", "error", "timeout"]),
+              hash: hashSchema.optional(),
+            })
+            .strict()
+            .refine((v) => v.outcome !== "hash" || !!v.hash)
+            .parse(body);
+          return send(200, payments.outcome(id, input.outcome, input.hash));
+        }
+        const { hash } = z
+          .object({ hash: hashSchema.optional() })
+          .strict()
+          .parse(body);
+        return send(200, await payments.reconcile(id, hash));
+      }
       if (path === "/api/campaigns" && req.method === "GET")
         return send(200, {
           campaigns: all(
@@ -353,6 +443,8 @@ export function createApp(config: Config) {
         if (!campaign) fail(404, "Campaign not found.");
         return send(200, {
           campaign,
+          wallet: payments.wallet(detail[1]),
+          paymentGate: payments.gate(),
           invitations: all(
             "SELECT id,created FROM invitations WHERE campaign_id=? ORDER BY created",
             detail[1],
@@ -424,7 +516,7 @@ export function createApp(config: Config) {
         send(400, {
           error: "Invalid input. Check the required fields and formats.",
         });
-      else if (error instanceof ApiError)
+      else if (error instanceof ApiError || error instanceof PaymentError)
         send(error.status, { error: error.message });
       else {
         console.error(
@@ -435,7 +527,7 @@ export function createApp(config: Config) {
       }
     }
   });
-  return { server, db };
+  return { server, db, payments };
 }
 async function readJson(req: IncomingMessage) {
   const chunks: Buffer[] = [];

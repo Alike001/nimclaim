@@ -1,3 +1,7 @@
+import { openDb } from "../../server/db.js";
+import { Payments } from "../../server/payments.js";
+import { digest } from "../../server/crypto.js";
+import { FixtureRpc } from "../payment-helpers.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
@@ -124,6 +128,45 @@ test("setup CLI and production process: Secure authentication, static build and 
       ).status,
       200,
     );
+    const organiserSigner = testSigner();
+    const walletChallenge = await (
+      await call(`/campaigns/${campaign.id}/wallet/challenge`, {})
+    ).json();
+    assert.equal(
+      (
+        await call(`/campaigns/${campaign.id}/wallet`, {
+          challengeId: walletChallenge.id,
+          publicKey: organiserSigner.publicKey,
+          signature: organiserSigner.sign(walletChallenge.message),
+        })
+      ).status,
+      200,
+    );
+    const payChallenge = await (
+      await call(`/claims/${claim.id}/payment/challenge`, {})
+    ).json();
+    // Synthetic internal sender assurance only. The production process must still deny all dispatches.
+    const testDb = openDb(env.DATABASE_PATH);
+    const service = new Payments(testDb, {
+      origin: env.APP_ORIGIN,
+      network: "testnet",
+      now: () => Date.now() - 100_000,
+      enabled: true,
+      spendingNetwork: "testnet",
+      maxLuna: 1_000_000,
+      rpc: new FixtureRpc(),
+      verifySelectedSender: async () => organiserSigner.address,
+    });
+    const reservation = await service.reserve(
+      claim.id,
+      digest(cookie.split("=")[1]),
+      {
+        challengeId: payChallenge.id,
+        publicKey: organiserSigner.publicKey,
+        signature: organiserSigner.sign(payChallenge.message),
+      },
+    );
+    testDb.close();
     await stop();
     base = await start();
     assert.equal((await call("/session")).status, 200);
@@ -132,6 +175,21 @@ test("setup CLI and production process: Secure authentication, static build and 
     assert.equal(restored.claims[0].address, signer.address);
     assert.equal(restored.claims[0].status, "payment-ready");
     assert.equal(restored.claims[0].history.length, 2);
+    assert.equal(restored.claims[0].payment.state, "UNKNOWN");
+    assert.equal(restored.claims[0].payment.id, reservation.id);
+    assert.equal(restored.claims[0].payment.receipt, null);
+    assert.equal(
+      (
+        await call(`/payments/${reservation.id}/dispatch`, {
+          permit: reservation.permit,
+        })
+      ).status,
+      409,
+    );
+    assert.equal(
+      (await (await call("/config")).json()).payments.senderBindingSupported,
+      false,
+    );
     assert.equal((await call("/claim", proof)).status, 409);
   } finally {
     await stop();

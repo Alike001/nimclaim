@@ -113,6 +113,7 @@ test("organiser, synthetic wallet signature, review and recipient status survive
 }) => {
   if (test.info().project.name === "mobile-chromium")
     await page.setViewportSize({ width: 320, height: 700 });
+  await injectWallet(page, "success");
   const url = await invitation(page),
     recipient = await context.newPage();
   if (test.info().project.name === "mobile-chromium")
@@ -142,6 +143,22 @@ test("organiser, synthetic wallet signature, review and recipient status survive
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await page.getByRole("button", { name: "Approve for payment" }).click();
   await expect(page.locator(".badge.payment-ready")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Authorize campaign wallet", exact: true })
+    .click();
+  await expect(
+    page.getByText("This campaign is permanently authorized to:"),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Review native NIM payment", exact: true })
+    .click();
+  await expect(
+    page.getByRole("region", { name: "Payment review" }),
+  ).toContainText("Unverifiable with the current SDK");
+  await expect(
+    page.getByRole("button", { name: "Connect wallet for payment review" }),
+  ).toBeDisabled();
+
   await expect(
     page.getByRole("button", { name: "Approve for payment" }),
   ).toHaveCount(0);

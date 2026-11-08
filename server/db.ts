@@ -30,7 +30,7 @@ export function openDb(path: string) {
       id INTEGER PRIMARY KEY, claim_id TEXT NOT NULL REFERENCES claims(id),
       status TEXT NOT NULL, at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS challenges_invitation ON challenges(invitation_id);
-    PRAGMA user_version=1;`);
+    `);
   return db;
 }
 export type DB = ReturnType<typeof openDb>;
