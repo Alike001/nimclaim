@@ -4,9 +4,9 @@ Prepared from local commit `207bcd2` without starting over. This replaces that c
 
 ## Verdict and next human action
 
-**GO for local implementation review. NO-GO for creating the staging service now.** Real local Postgres validation is available; missing operational inputs are the separately approved Neon project/database, its pooled/direct connection secrets, the actual Render HTTPS origin, a fresh staging organiser hash and confirmation of free-only billing/quota settings. Creation itself deploys and needs separate approval. Render CLI/platform-aware validation and live Neon/Render compatibility are also unverified.
+**Neon infrastructure and public schema are initialized; Render deployment remains NO-GO.** The approved project is `nimclaim-staging` (`late-dew-24158174`), branch `main` (`br-lively-rice-b9pxx7a4`), database `nimclaim`, PostgreSQL 17 in AWS Frankfurt. Connection secrets are held only in the ignored, untracked, mode-0600 `.local/neon-staging.env`. The owning organisation is Free. This continuation does not authorize pushing, deploying, billing changes or wallet operations. See the dated evidence below for hosted verification results and remaining gates.
 
-**Next human action:** review this report and approve creating only an isolated **Neon Free** project/database first. Do not send connection strings in chat. After approved setup, enter secrets directly in Render's creation form/environment fields; approve pushing the reviewed commits and creating the **Free** Render service separately. Do not click Create/Apply to obtain a preview: those actions start a deploy even with automatic deployments off.
+**Next human actions:** retain the private migration credentials locally; prepare a fresh staging organiser credential, the actual Render HTTPS origin, least-privilege runtime access and free-only workspace/quota checks. Do not create another Neon project. Pushing reviewed commits and creating the **Free** Render service require separate authorization. Do not click Create/Apply to obtain a preview: those actions start a deploy even with automatic deployments off.
 
 Physical Android/Nimiq Pay acceptance is a post-deploy gate before inviting recipients. **Mainnet and all payment dispatch remain NO-GO.** The November 11, 2026 competition deadline does not relax these gates. This narrow implementation supports campaigns → private invitations → cryptographically verified claims → organiser decisions/status. It does not add payout execution, import personal local records, or implement a new sender/HTLC policy.
 
@@ -63,7 +63,7 @@ Global shared rate buckets remain **10 login attempts/minute and 180 other API r
 
 ## Exact manual configuration — after separate approval
 
-1. In an explicitly Free Neon organization/project, create a **fresh project**, e.g. `nimclaim-testnet-staging`, with Postgres **17** and an empty staging database. Prefer AWS Frankfurt near Render Frankfurt. Do not select Nimlane, an existing personal database, a data-bearing branch, Auth, a Data API or other paid capability. No local import is needed. Use the smallest available compute/normal scale-to-zero behavior and monitor the Free quota. Retain only necessary branches. [Project guidance](https://neon.com/docs/manage/projects).
+1. **Already completed:** use only `nimclaim-staging` / `late-dew-24158174`, branch `main` / `br-lively-rice-b9pxx7a4`, database `nimclaim`, PostgreSQL **17**, AWS Frankfurt. Do not create another project, select Nimlane, import local records, or enable Auth/Data API. The three reviewed public migrations have been applied. Keep the existing Free plan, smallest compute and ordinary scale-to-zero behavior; monitor the quota. [Project guidance](https://neon.com/docs/manage/projects).
 2. In Neon's Connect dialog, select that same database/role and copy the **pooled** URL (hostname contains `-pooler`) and the **direct** URL (without it) privately. Retain TLS options; `sslmode=require`/`verify-full` and `channel_binding=require` are accepted, but the application always verifies the certificate/hostname. Do not paste either URL in chat, a command argument/history, Git, frontend variables or the existing local `.env`.
 3. Generate a fresh organiser credential using the existing reviewed `node --import tsx ops/staging-credentials.ts` tool only when authorized to write new local staging credentials. It writes a protected ignored file and refuses overwrite; it never reads the real organiser password. Store the new password in a password manager. Only its scrypt hash belongs in Render; do not upload the credentials file.
 4. After approval to push and deploy, review root `render.yaml` and create one **Free** Node service from this repository/main. No existing environment groups, secret files or databases should be linked. Verify the actual assigned `onrender.com` hostname; the name requested in YAML is not a hostname guarantee. Use exactly that HTTPS origin, without path/trailing slash or an alternate custom domain. Host mismatch intentionally fails closed; health checks must use the same hostname. If correcting a setting, use Save only until a deploy is separately authorized.
@@ -85,7 +85,7 @@ Global shared rate buckets remain **10 login attempts/minute and 180 other API r
 | `STAGING_ORGANISER_PASSWORD_HASH` | Secret fresh scrypt hash; never the existing local hash                                                                              |
 | Absent                            | Disk, Render database, workers/cron, `DATABASE_PATH`, `SPENDING_NETWORK`, `RPC_URL`, `RPC_AUTHORIZATION`, `VITE_*` secrets           |
 
-The driver is `pg` 8.23.1 locked by `package-lock.json`. Versioned schema/bootstrap run during startup, not build: no DB write occurs during `npm run build`. Startup direct privileges must allow the migrations (tables, domain, functions/triggers and sequences); runtime needs access to the same schema. The default fresh Neon database owner works for this narrow deployment; its two URLs remain sensitive administrative secrets. A dedicated least-privilege runtime role is a future hardening step, not a reason to reuse an unrelated database.
+The driver is `pg` 8.23.1 locked by `package-lock.json`. Versioned schema/bootstrap run during startup, not build: no DB write occurs during `npm run build`. Startup direct privileges must allow the migrations (tables, domain, functions/triggers and sequences); runtime needs access to the same schema. The supplied URLs currently authenticate as the database owner; they are operator migration credentials, not approved permanent application credentials. **Least-privilege separation is a pre-deployment gate.** Do not upload this owner credential file or place its contents in Render while this gate is open. See the explicit access plan below. The current Blueprint/startup still requires a direct migration credential, so it is not ready to apply unchanged.
 
 The current public [Render JSON Schema](https://render.com/schema/render.yaml.json) validates this Blueprint. Render CLI is unavailable locally, so `render blueprints validate render.yaml` still needs an authenticated, approved workspace. It validates only and must not be replaced with Apply. [Blueprint reference](https://render.com/docs/blueprint-spec) and [secret handling](https://render.com/docs/configure-environment-variables) were retrieved and read. Never upload the workspace, local SQLite/WAL, logs, private CA, backup/key files or test screenshots. Render gets reviewed tracked source from Git only.
 
@@ -147,7 +147,7 @@ Actual provider/network/origin checks remain implemented and regression-tested; 
 
 **PASS — 107 tests:** the complete original 94 plus **13 real PostgreSQL integration tests**. The final Postgres rerun also verifies explicit TRUNCATE guards, because row-level delete triggers alone cannot protect append-only history from PostgreSQL bulk truncation. The engine-restart test reconnects explicitly after invalidating old sockets; production does not automatically retry ambiguous business operations. Generic connection-unavailable messages during that deliberate engine restart are expected.
 
-Typecheck, production build, formatting, dependency audit (zero reported vulnerabilities), whitespace checks and current Render JSON Schema validation passed. No DB URL/hash secret names or connection strings are present in the generated client bundle. Redacted Git-history and tracked-source secret scans passed with no leaks found. Platform-aware Render validation, real Neon TLS/PgBouncer, cloud sleep/redeploy/restore and physical Nimiq Pay remain untested until separately approved setup.
+Typecheck, production build, formatting, dependency audit (zero reported vulnerabilities), whitespace checks and current Render JSON Schema validation passed. No DB URL/hash secret names or connection strings are present in the generated client bundle. Redacted Git-history and tracked-source secret scans passed with no leaks found. The original commit did not test Neon. The dated continuation evidence below supersedes that limitation for direct/pooled TLS and the hosted checks actually listed; platform-aware Render validation, cloud sleep/redeploy/restore and physical Nimiq Pay remain unverified.
 
 The exact changed files are:
 
@@ -160,3 +160,78 @@ The exact changed files are:
 | Encrypted backup and publication exclusions   | `ops/postgres-backup.ts`, `.gitignore`                                                                                                  |
 | Real integration/process/restore tests        | `tests/postgres/integration.test.ts`, `tests/postgres/run.ts`, `tests/postgres/worker.ts`                                               |
 | Instructions/readiness/security               | `README.md`, `docs/RENDER-STAGING.md`, `docs/SECURITY.md`, `docs/MAINNET-READINESS.md`                                                  |
+
+## Hosted Neon verification — 2026-11-09 continuation from 08b65e4
+
+This section records actual hosted results, distinct from the original disposable PostgreSQL tests above. No Render service, deploy, push, billing change, wallet connection, RPC call or payment was performed. Existing `.env`, SQLite records, organiser credentials and certificates were not migration inputs or edited. No production startup, migration SQL, sender restriction or HTLC rule was changed.
+
+### Identity, private configuration and migration evidence
+
+- Neon metadata tied the approved project ID to `main` / `br-lively-rice-b9pxx7a4` and endpoint `ep-royal-sunset-b9d4cl7u`. Database name was checked independently through Neon MCP and each supplied connection. PostgreSQL reported `17.11`.
+- The credential file is a regular file with mode `0600`, ignored by Git and absent from the index. Tools parse it internally; they never source the existing `.env`, print driver errors, echo URLs or pass secrets in command arguments. The verification helper pins both exact approved hosts and the database name and refuses a mismatch before connecting.
+- Both direct and pooled application-facing sockets were encrypted and authorized by Node's trusted certificate store. Explicit `checkServerIdentity` accepted the correct host and rejected `wrong-host.invalid` against each peer certificate. No CA override or verification bypass was introduced. Neon's internal `pg_stat_ssl.ssl=false` is not the client-facing TLS status; checking it initially produced a false diagnostic failure. The verified socket is the relevant evidence. See the [driver's TLS implementation](https://github.com/brianc/node-postgres/blob/master/packages/pg/lib/connection.js).
+- Immediately before DDL, the initialization transaction acquired the same advisory lock as the reviewed migrator and verified zero user relations, non-extension functions/types and additional user namespaces. No unexpected objects existed. The initial zero-table state was also independently checked through MCP.
+- Every SQL file was compared byte-for-byte with `08b65e4` before execution. Only the existing migration ledger and these three reviewed migrations were applied; the only initial application rows are the two immutable TESTNET/deployment settings.
+
+| Version | File               | SHA-256                                                            |
+| ------- | ------------------ | ------------------------------------------------------------------ |
+| 1       | `001_claims.sql`   | `29437cd523985e89b3e2a752d653dc4559d3d94916129a4df896ad7b0d8f3eb7` |
+| 2       | `002_payments.sql` | `6eb2f9baeae027ed6f605988b9cd90fa55d6e9d1d3b775d8d657aa00eaa33a5d` |
+| 3       | `003_limits.sql`   | `336af74ab07bfce58224e0142001a675b2f5294ccc0e5bafd1fc299fef77ff4b` |
+
+The existing `migrate()` was rerun twice after commit. All ledger versions, checksums and application timestamps remained identical. Independent read-only catalog inspection found **16 public tables, three application functions, 21 application triggers and zero unvalidated constraints**. Public campaigns, claims, sessions, organisers and payment attempts remain empty. The real staging organiser is deliberately not bootstrapped with a synthetic password.
+
+### Hosted synthetic checks and persistence
+
+The explicit operator command `node --import tsx tests/postgres/neon.ts test` creates a fresh schema with no `public` search-path fallback, copies only the reviewed application DDL there and starts two loopback-only API child processes against verified direct Neon connections. It uses ephemeral generated signing keys and a synthetic organiser password; no wallet or funded identity is used. The production entry point never imports this harness. The supplied pooled connection independently reads committed test data inside a transaction with `SET LOCAL search_path`, without assuming PgBouncer preserves session state.
+
+**PASS — final hosted run**, schema `nimclaim_verify_56263f5c6baeb2d1`:
+
+- Two separate API processes serialized campaign capacity; duplicate token hashes were rejected.
+- Concurrent signed claims consumed a challenge once; competing invitations for one campaign/address produced one winner and rolled back the losing challenge's consumption.
+- UNKNOWN attempts could not reset to SUBMITTING or be deleted. Intent amounts and claim identity remained immutable; events and hashes rejected update/delete, and payment-history TRUNCATE was rejected.
+- After SIGKILL of one process, graceful shutdown of the other and a fresh replacement, the hashed session remained authenticated, the exact Luna amount and decision/history survived, expired claims retained their expiry history, and both shared rate buckets still rejected requests. Explicitly expiring the synthetic session then made it unauthenticated.
+- The pooled connection independently read the committed session, claim status, expiry/history and UNKNOWN lock from that isolated schema. Payment mutation routes remained unavailable.
+- All public application activity tables remained empty and the public migration ledger was unchanged.
+
+Each run retains its clearly named schema for review; it does not drop any schema/table, truncate real data or remove public records or retained test fixtures. The first run's schema, `nimclaim_verify_e6609655330487d1`, remains isolated and contains partial fixtures. It stopped on a timing assumption: the earlier login bucket had legitimately expired while remote checks ran, so the test observed 10 successes instead of its expected 9. The corrected test establishes its own synthetic rate window and asserts 10 successes plus two HTTP-429 domain errors, then tests persistence through replacement. This changes only the test fixture, not the application's rate-limit logic.
+
+The verification distinguishes process restart from a database-engine restart. Only the disposable local PostgreSQL engine was restarted; the hosted Neon compute was not restarted or deliberately kept awake. Render sleep/redeploy and physical Nimiq Pay acceptance remain untested.
+
+### Commands, access plan and remaining Render Free gates
+
+Executed commands (no command contains a connection secret):
+
+```sh
+npm run check:staging
+npm run typecheck
+npm run build
+npm run format:check
+npm audit --json
+node --import tsx tests/postgres/neon.ts initialize
+node --import tsx tests/postgres/neon.ts test
+node --import tsx ops/neon-secret-scan.ts
+git diff --check
+```
+
+`initialize` is a one-time operation that refuses an already populated database; it is not the rerun command. It performed the preflight and additive application initialization in one transaction, then invoked the reviewed migrator twice for idempotency. Future application migration execution uses `migrate()` after an independently reviewed plan; do not bypass the empty-database refusal or edit applied files.
+
+The full existing suite is **107 passing tests**: 57 unit/domain/API tests, three runtime tests, 17 desktop browser tests, 17 mobile browser tests and 13 disposable PostgreSQL integration tests. Deliberate connection-loss tests emit generic `Database connection unavailable` lines; their assertions pass. Initial new-harness typecheck errors involved circular type inference and an untyped proof array; both were corrected before initialization. The final build includes typecheck. Dependency audit reports **zero vulnerabilities**. The secret scanner checks tracked files, pending source additions, all reachable Git history blobs and the generated client bundle against the private URLs/passwords and high-confidence credential/key patterns; it prints counts only. It is a targeted scan, not a guarantee against every possible secret format. Credentials and runtime logs remain ignored.
+
+Before deployment, implement and verify this least-privilege access split:
+
+| Identity                 | Required access                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Prohibited access                                                                                                                                                  |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Local migration operator | Existing owner/direct connection for reviewed migrations and one-time fresh organiser bootstrap                                                                                                                                                                                                                                                                                                                                                                                                     | Permanent Render environment or frontend exposure                                                                                                                  |
+| Dedicated runtime login  | CONNECT to `nimclaim`, USAGE on `public`; SELECT on required application tables; INSERT/DELETE sessions; INSERT campaigns/invitations plus minimal column UPDATE privileges needed for their SELECT FOR UPDATE locks (campaign mutation still fails its trigger); INSERT/UPDATE/DELETE challenges; INSERT/UPDATE claims; INSERT events; INSERT/UPDATE staging_rate; UPDATE only payment-attempt state/reason/updated for stale-to-UNKNOWN; INSERT payment_events; USAGE on required event sequences | Owner membership, superuser, role/database creation, schema CREATE, DDL, TRUNCATE, trigger disablement, intent/attempt/hash insertion or grants to other databases |
+
+Create a fresh runtime role with no administrative memberships and a new privately saved password; do not rotate or reuse the existing owner/local passwords. Verify the role's effective permissions and positive/negative API cases on Neon. Keep the approved migration operator secret off Render. The current `startFromEnvironment()` always performs migrations/bootstrap and the current Blueprint prompts for `DIRECT_DATABASE_URL`; separating those operator tasks from read-only runtime schema/organiser validation is **still required before deployment**. A restricted runtime login alone does not solve that startup dependency. No owner credential has been published or placed on Render during this task.
+
+Remaining human inputs and deployment sequence:
+
+1. Retain the private connection file locally. Keep this Neon project/branch/database and Free billing unchanged; do not create another project or import personal records.
+2. Prepare a fresh staging organiser password/hash with `node --import tsx ops/staging-credentials.ts` only if its new output path does not already exist. The tool refuses overwrite. Preserve existing credentials and store the new password privately. Bootstrap that hash using the local migration operator after the access split is implemented; public organiser is currently empty.
+3. Complete the least-privilege startup/access gate above. Enter only the dedicated pooled runtime credential into Render after it passes verification. Do not upload `.local/`, the private env file, credentials JSON, certificates, SQLite data, logs or backups.
+4. Confirm the actual Render workspace is free-only and check quota/billing behavior without changing another project's billing. Validate `render.yaml` using Render's platform-aware validator when available. This continuation did not recheck pricing or platform quotas.
+5. Obtain separate authorization to push and create one Frankfurt **Free** Node web service. Creating/applying deploys. Use `npm ci --include=dev && npm run build`, then the reviewed staging start command, `/healthz`, auto-deploy off, the actual assigned HTTPS origin, TESTNET and all zero/false spending settings shown above. The Blueprint must first reflect the credential separation; do not apply it unchanged.
+6. After separately authorized hosting, verify Android/Nimiq Pay signing, Render restart/sleep/redeploy and encrypted backup/restore into a separately approved empty destination before inviting recipients. Mainnet, payments, native sender bypasses and HTLC relaxation remain NO-GO.
