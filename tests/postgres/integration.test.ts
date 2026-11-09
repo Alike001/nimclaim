@@ -26,7 +26,10 @@ import {
   neonConnection,
   safeNumber,
 } from "../../server/postgres/db.js";
-import { postgresStagingConfig } from "../../server/postgres/staging.js";
+import {
+  postgresStagingConfig,
+  stagingOrigin,
+} from "../../server/postgres/staging.js";
 import { passwordHash } from "../../server/crypto.js";
 import { encryptedDump, restoreDump } from "../../ops/postgres-backup.js";
 import { testSigner } from "../helpers.js";
@@ -107,7 +110,7 @@ async function database(t: { after: Function }, initialize = true) {
   }
   return { name, pool };
 }
-async function worker(name: string) {
+async function worker(name: string, appOrigin = origin) {
   const child = spawn(
     process.execPath,
     ["--import", "tsx", "tests/postgres/worker.ts"],
@@ -116,7 +119,7 @@ async function worker(name: string) {
       env: {
         ...process.env,
         NIMCLAIM_PG_TEST_DB: name,
-        NIMCLAIM_PG_TEST_ORIGIN: origin,
+        NIMCLAIM_PG_TEST_ORIGIN: appOrigin,
       },
     },
   );
@@ -153,7 +156,7 @@ async function worker(name: string) {
   ]);
   return processHandle;
 }
-function client(apiPort: number) {
+function client(apiPort: number, appOrigin = origin) {
   let cookie = "";
   async function call(
     path: string,
@@ -172,8 +175,8 @@ function client(apiPort: number) {
           path,
           method: body === undefined ? "GET" : "POST",
           headers: {
-            Host: new URL(origin).host,
-            Origin: origin,
+            Host: new URL(appOrigin).host,
+            Origin: appOrigin,
             "Content-Type": "application/json",
             Cookie: cookie,
             ...headers,
@@ -263,6 +266,15 @@ test("production requires only restricted pooled TLS and refuses administrative 
     DATABASE_URL: fixture.toString(),
   };
   const config = postgresStagingConfig(base);
+  assert.equal(
+    postgresStagingConfig({
+      ...base,
+      APP_ORIGIN: undefined,
+      RENDER: "true",
+      RENDER_EXTERNAL_URL: origin,
+    }).origin,
+    origin,
+  );
   assert.deepEqual(config.runtime.ssl, {
     rejectUnauthorized: true,
     servername: fixture.hostname,
@@ -477,6 +489,113 @@ test("two real API processes preserve auth, Origin, signatures, private routes a
   assert.equal(data.staging, true);
   assert.equal(data.paymentGate.enabled, false);
   assert.equal(JSON.stringify(data).includes(token), false);
+});
+
+test("derived Render origin binds gateway, config, cookies, invitations and signed claims without payment access", async (t) => {
+  const { name, pool } = await database(t);
+  const derived = stagingOrigin({
+    RENDER: "true",
+    RENDER_EXTERNAL_URL: "https://nimclaim-testnet-staging-64nl.onrender.com",
+  });
+  const a = await worker(name, derived);
+  const x = client(a.port, derived);
+  const config = await x.call("/api/config");
+  assert.equal(config.body.origin, derived);
+  assert.equal(config.body.network, "testnet");
+  assert.equal(config.headers["access-control-allow-origin"], undefined);
+  assert.equal(
+    (
+      await x.call("/api/config", undefined, {
+        Host: "evil.example",
+        "X-Forwarded-Host": new URL(derived).host,
+        "X-Forwarded-Proto": "https",
+      })
+    ).status,
+    404,
+  );
+  assert.equal(
+    (
+      await x.call(
+        "/api/login",
+        { password },
+        {
+          Origin: "https://evil.example",
+          "X-Forwarded-Host": new URL(derived).host,
+        },
+      )
+    ).status,
+    403,
+  );
+  const login = await x.login();
+  const cookie = login.headers["set-cookie"]![0];
+  assert.match(cookie, /Path=\/api; HttpOnly; SameSite=Strict;.*Secure/);
+  assert.doesNotMatch(cookie, /Domain=/i); // Host-only session for the derived host.
+  assert.equal(
+    (
+      await x.call("/api/config", undefined, {
+        "X-Forwarded-Host": "evil.example",
+        "X-Forwarded-Proto": "http",
+        Forwarded: "host=evil.example;proto=http",
+      })
+    ).body.origin,
+    derived,
+  );
+  const c = await campaign(x);
+  const invite = await x.call(`/api/campaigns/${c.id}/invitations`, {});
+  assert.equal(invite.status, 201);
+  assert.equal(new URL(invite.body.url).origin, derived);
+  const token = new URL(invite.body.url).hash.slice(7);
+  const signer = testSigner();
+  const p = await proof(x, token, signer);
+  const binding = JSON.parse(p.challenge.message);
+  assert.equal(binding.origin, derived);
+  assert.equal(binding.network, "testnet");
+  assert.equal(
+    (
+      await x.call("/api/claim", {
+        ...p.body,
+        signature: signer.sign(JSON.stringify({ ...binding, origin })),
+      })
+    ).status,
+    401,
+  );
+  // A correctly signed proof from this host is unusable at another exact origin.
+  const other = "https://nimclaim-other-test.onrender.com";
+  const b = await worker(name, other);
+  assert.equal(
+    (await client(b.port, other).call("/api/claim", p.body)).status,
+    409,
+  );
+  assert.equal(
+    (
+      await pool.query("SELECT used FROM challenges WHERE id=$1", [
+        p.challenge.id,
+      ])
+    ).rows[0].used,
+    0,
+  );
+  const claim = await x.call("/api/claim", p.body);
+  assert.equal(claim.status, 201);
+  for (const route of [
+    `/api/claims/${claim.body.claim.id}/payment/reserve`,
+    `/api/payments/${claim.body.claim.id}/dispatch`,
+    `/api/campaigns/${c.id}/wallet/challenge`,
+    `/api/payments/${claim.body.claim.id}/reconcile`,
+  ]) {
+    assert.equal((await x.call(route, {})).status, 404);
+    assert.equal(
+      (await client(a.backend, derived).call(route, {})).status,
+      403,
+    );
+  }
+  assert.equal(
+    (await x.call(`/api/campaigns/${c.id}`)).body.paymentGate.enabled,
+    false,
+  );
+  assert.equal(
+    (await pool.query("SELECT count(*) AS n FROM payment_attempts")).rows[0].n,
+    0,
+  );
 });
 
 test("cross-process campaign slot allocation, concurrent challenge refresh and unique wallet/campaign are serialized", async (t) => {

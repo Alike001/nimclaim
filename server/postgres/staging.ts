@@ -7,16 +7,50 @@ import { createPostgresApp } from "./app.js";
 import { PostgresStore } from "./store.js";
 import { stagingGateway } from "../staging-gateway.js";
 
+export function stagingOrigin(env: NodeJS.ProcessEnv) {
+  // Platform variables are trusted configuration, never request headers.
+  // Partial Render configuration must not fall back to a local APP_ORIGIN.
+  const render = [
+    "RENDER",
+    "RENDER_EXTERNAL_URL",
+    "RENDER_EXTERNAL_HOSTNAME",
+  ].some((key) => env[key] !== undefined);
+  const origin = render ? env.RENDER_EXTERNAL_URL : env.APP_ORIGIN;
+  try {
+    if (!origin) throw new Error();
+    const url = new URL(origin);
+    if (
+      !origin.startsWith("https://") ||
+      url.origin !== origin ||
+      url.username ||
+      url.password
+    )
+      throw new Error();
+    if (
+      render &&
+      (env.RENDER !== "true" ||
+        url.port ||
+        !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.onrender\.com$/.test(
+          url.hostname,
+        ) ||
+        (env.RENDER_EXTERNAL_HOSTNAME !== undefined &&
+          env.RENDER_EXTERNAL_HOSTNAME !== url.hostname) ||
+        (env.APP_ORIGIN !== undefined && env.APP_ORIGIN !== origin))
+    )
+      throw new Error();
+    return origin;
+  } catch {
+    // Do not echo malformed URLs, which might contain credentials.
+    throw new Error(
+      render
+        ? "Render staging requires a canonical HTTPS RENDER_EXTERNAL_URL and consistent origin settings"
+        : "Staging requires an exact HTTPS APP_ORIGIN",
+    );
+  }
+}
+
 export function postgresStagingConfig(env: NodeJS.ProcessEnv) {
-  const origin = env.APP_ORIGIN;
-  if (
-    !origin ||
-    !origin.startsWith("https://") ||
-    new URL(origin).origin !== origin ||
-    new URL(origin).username ||
-    new URL(origin).password
-  )
-    throw new Error("Staging requires an exact HTTPS APP_ORIGIN");
+  const origin = stagingOrigin(env);
   if (
     env.NODE_ENV !== "production" ||
     env.NIMCLAIM_STAGING !== "1" ||
