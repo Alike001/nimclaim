@@ -23,7 +23,10 @@
     "test:browser:mobile": "playwright test --project=mobile-chromium --output=test-results/mobile",
     "start:staging": "node --import tsx ops/staging-start.ts",
     "test:postgres": "node --import tsx tests/postgres/run.ts",
-    "check:staging": "npm run check && npm run test:postgres"
+    "check:staging": "npm run check && npm run test:postgres",
+    "staging:migrate": "node --import tsx ops/staging-admin.ts migrate",
+    "staging:bootstrap": "node --import tsx ops/staging-admin.ts bootstrap",
+    "staging:verify": "node --import tsx ops/staging-runtime-check.ts"
   },
   "keywords": [],
   "author": "",

@@ -1,5 +1,5 @@
 // Read private values only to detect accidental publication. Print counts only.
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { parseEnv } from "node:util";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
@@ -39,7 +39,7 @@ try {
   const tracked = execFileSync("git", ["ls-files", "-z"])
     .toString()
     .split("\0")
-    .filter(Boolean);
+    .filter((path) => !!path && existsSync(path));
   for (const path of tracked) scan(readFileSync(path));
   // Include untracked source additions that are about to be committed.
   const additions = execFileSync("git", [

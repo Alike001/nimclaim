@@ -87,9 +87,6 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
         if (!organiser || !checkPassword(password, organiser.password_hash))
           fail(401, "Invalid organiser credentials.");
         const token = randomToken();
-        await store.read("DELETE FROM sessions WHERE expires<=$1", [
-          Date.now(),
-        ]);
         await store.read("INSERT INTO sessions VALUES ($1,$2)", [
           digest(token),
           Date.now() + 8 * 3600000,
@@ -99,7 +96,7 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
       }
       if (path === "/api/logout" && req.method === "POST") {
         if (session)
-          await store.read("DELETE FROM sessions WHERE hash=$1", [
+          await store.read("UPDATE sessions SET expires=0 WHERE hash=$1", [
             digest(session),
           ]);
         res.setHeader("Set-Cookie", cookie("", 0));

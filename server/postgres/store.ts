@@ -91,7 +91,7 @@ export class PostgresStore {
         now = Date.now();
       await this.usable(c, inv, now);
       await c.query(
-        "DELETE FROM challenges WHERE invitation_id=$1 AND used=0",
+        "UPDATE challenges SET used=1 WHERE invitation_id=$1 AND used=0",
         [inv.id],
       );
       const id = randomUUID(),

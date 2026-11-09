@@ -14,5 +14,5 @@ writeFileSync(
   { flag: "wx", mode: 0o600 },
 );
 console.log(
-  "Fresh credentials saved to ignored .local/staging/credentials.json. Store the password securely; enter only the hash in Render. Never upload this file.",
+  "Fresh credentials saved to ignored .local/staging/credentials.json. Store the password securely; use this file only for the explicit local bootstrap command. Never upload the password, hash or file to Render.",
 );

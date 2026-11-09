@@ -1,3 +1,10 @@
+import { verifySchema } from "../../server/postgres/schema.js";
+import { verifyRuntimeRole } from "../../server/postgres/permissions.js";
+import {
+  migrate,
+  bootstrap,
+  migrationDirectory,
+} from "../../server/postgres/admin.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
@@ -16,9 +23,6 @@ import { randomBytes } from "node:crypto";
 import { request } from "node:http";
 import {
   createPool,
-  migrate,
-  bootstrap,
-  migrationDirectory,
   neonConnection,
   safeNumber,
 } from "../../server/postgres/db.js";
@@ -58,6 +62,32 @@ function poolFor(database: string) {
   databasePools.set(database, [...(databasePools.get(database) ?? []), pool]);
   return pool;
 }
+async function grantRuntime(pool: Pool, name: string) {
+  if (!/^nimclaim_test_[a-z0-9_]+$/.test(name))
+    throw new Error("Disposable database required");
+  const sql = readFileSync("ops/nimclaim-app-grants.sql", "utf8").replaceAll(
+    "ON DATABASE nimclaim",
+    `ON DATABASE ${name}`,
+  );
+  await pool.query(sql);
+}
+function runtimePool(name: string) {
+  const pool = createPool({
+    host: "127.0.0.1",
+    port,
+    user: "nimclaim_app",
+    database: name,
+    max: 3,
+  });
+  databasePools.set(name, [...(databasePools.get(name) ?? []), pool]);
+  return pool;
+}
+test.before(async () => {
+  // Role fixture exists only inside the disposable loopback Docker container.
+  await admin.query(
+    "CREATE ROLE nimclaim_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS",
+  );
+});
 async function database(t: { after: Function }, initialize = true) {
   const name = "nimclaim_test_" + randomBytes(6).toString("hex");
   await admin.query(`CREATE DATABASE ${name}`);
@@ -73,6 +103,7 @@ async function database(t: { after: Function }, initialize = true) {
   if (initialize) {
     await migrate(pool);
     await bootstrap(pool, hash);
+    await grantRuntime(pool, name);
   }
   return { name, pool };
 }
@@ -85,7 +116,6 @@ async function worker(name: string) {
       env: {
         ...process.env,
         NIMCLAIM_PG_TEST_DB: name,
-        NIMCLAIM_PG_TEST_HASH: hash,
         NIMCLAIM_PG_TEST_ORIGIN: origin,
       },
     },
@@ -216,29 +246,33 @@ async function proof(
   };
 }
 
-test("production configuration requires pooled/direct verified TLS and refuses every SQLite/payment downgrade", () => {
+test("production requires only restricted pooled TLS and refuses administrative secrets or SQLite/payment downgrades", () => {
   // Reserved synthetic credentials/endpoint, never connected to a service.
+  const fixture = new URL(
+    "postgresql://synthetic:example-only@ep-synthetic-pooler.eu-central-1.aws.neon.tech/nimclaim?sslmode=require&channel_binding=require",
+  );
+  fixture.username = "nimclaim_app";
+  fixture.hostname =
+    "ep-royal-sunset-b9d4cl7u-pooler.c-7.eu-central-1.aws.neon.tech";
   const base = {
     NODE_ENV: "production",
     NIMCLAIM_STAGING: "1",
     APP_ORIGIN: origin,
     NETWORK: "testnet",
     SPENDING_ENABLED: "false",
-    STAGING_ORGANISER_PASSWORD_HASH: hash,
-    DATABASE_URL:
-      "postgresql://synthetic:example-only@ep-synthetic-pooler.eu-central-1.aws.neon.tech/nimclaim?sslmode=require&channel_binding=require",
-    DIRECT_DATABASE_URL:
-      "postgresql://synthetic:example-only@ep-synthetic.eu-central-1.aws.neon.tech/nimclaim?sslmode=require&channel_binding=require",
+    DATABASE_URL: fixture.toString(),
   };
   const config = postgresStagingConfig(base);
   assert.deepEqual(config.runtime.ssl, {
     rejectUnauthorized: true,
-    servername: "ep-synthetic-pooler.eu-central-1.aws.neon.tech",
+    servername: fixture.hostname,
   });
   assert.equal(config.runtime.max, 3);
   for (const patch of [
     { DATABASE_URL: "" },
-    { DIRECT_DATABASE_URL: "" },
+    { DIRECT_DATABASE_URL: "forbidden" },
+    { STAGING_ORGANISER_PASSWORD_HASH: hash },
+    { NODE_TLS_REJECT_UNAUTHORIZED: "0" },
     { DATABASE_PATH: ":memory:" },
     { NETWORK: "mainnet" },
     { SPENDING_ENABLED: "true" },
@@ -246,12 +280,8 @@ test("production configuration requires pooled/direct verified TLS and refuses e
     { SPENDING_NETWORK: "testnet" },
     { MAX_PAYMENT_LUNA: "1" },
     { APP_ORIGIN: origin + "/" },
-    {
-      DIRECT_DATABASE_URL: base.DIRECT_DATABASE_URL.replace(
-        "/nimclaim",
-        "/other",
-      ),
-    },
+    { DATABASE_URL: base.DATABASE_URL.replace("/nimclaim", "/other") },
+    { DATABASE_URL: base.DATABASE_URL.replace("nimclaim_app", "owner") },
     { NODE_ENV: "development" },
   ])
     assert.throws(() => postgresStagingConfig({ ...base, ...patch }));
@@ -276,7 +306,7 @@ test("real migrations run twice, serialize across clients and preserve data/chec
   await bootstrap(pool, hash);
   const before = (await pool.query("SELECT * FROM organiser")).rows;
   await migrate(pool);
-  await bootstrap(pool, hash);
+  await assert.rejects(bootstrap(pool, hash), /never overwritten/);
   assert.equal(
     (await pool.query("SELECT count(*) AS n FROM schema_migrations")).rows[0].n,
     3,
@@ -477,11 +507,13 @@ test("cross-process campaign slot allocation, concurrent challenge refresh and u
     [201, 201],
   );
   assert.equal(
-    (await pool.query("SELECT count(*) AS n FROM challenges")).rows[0].n,
+    (await pool.query("SELECT count(*) AS n FROM challenges WHERE used=0"))
+      .rows[0].n,
     1,
   );
   const signer = testSigner(),
-    latest = (await pool.query("SELECT * FROM challenges")).rows[0];
+    latest = (await pool.query("SELECT * FROM challenges WHERE used=0"))
+      .rows[0];
   const stale = challenges.find((r) => r.body.id !== latest.id)!.body;
   assert.equal(
     (
@@ -790,7 +822,8 @@ test("real pg_dump encrypted archive authenticates, restores into another databa
     archive,
   );
   await migrate(restored.pool);
-  await bootstrap(restored.pool, hash);
+  await verifySchema(restored.pool);
+  await grantRuntime(restored.pool, restored.name);
   for (const table of [
     "organiser",
     "sessions",
@@ -1039,4 +1072,375 @@ test("encrypted backup failure cleans partial files and cannot overwrite a compl
     ),
   );
   assert.equal(readFileSync(archive, "utf8"), "preserve existing archive");
+});
+
+test("read-only startup rejects schema drift, missing migrations/network/organiser without repairing anything", async (t) => {
+  const { pool, name } = await database(t);
+  const runtime = runtimePool(name);
+  await verifyRuntimeRole(runtime);
+  await verifySchema(runtime);
+  const { startPostgresStaging } =
+    await import("../../server/postgres/staging.js");
+  await assert.rejects(startPostgresStaging(pool, origin), /Restricted/);
+  const original = (
+    await pool.query("SELECT * FROM schema_migrations ORDER BY version")
+  ).rows;
+  for (const [change, restore] of [
+    [
+      "UPDATE schema_migrations SET checksum='wrong' WHERE version=3",
+      `UPDATE schema_migrations SET checksum='${original[2].checksum}' WHERE version=3`,
+    ],
+    [
+      "UPDATE schema_migrations SET version=4 WHERE version=3",
+      "UPDATE schema_migrations SET version=3 WHERE version=4",
+    ],
+    [
+      "ALTER TABLE sessions RENAME TO sessions_wrong",
+      "ALTER TABLE sessions_wrong RENAME TO sessions",
+    ],
+    [
+      "ALTER TABLE payment_attempts DISABLE TRIGGER lock_attempt",
+      "ALTER TABLE payment_attempts ENABLE TRIGGER lock_attempt",
+    ],
+    [
+      "ALTER FUNCTION guard_attempt() SECURITY DEFINER",
+      "ALTER FUNCTION guard_attempt() SECURITY INVOKER",
+    ],
+    ["CREATE INDEX unexpected ON sessions(expires)", "DROP INDEX unexpected"],
+  ]) {
+    await pool.query(change);
+    await assert.rejects(startPostgresStaging(runtime, origin));
+    await pool.query(restore);
+  }
+  await pool.query(
+    "ALTER TABLE settings DISABLE TRIGGER fixed_settings; UPDATE settings SET value='mainnet' WHERE key='network'; ALTER TABLE settings ENABLE TRIGGER fixed_settings",
+  );
+  await assert.rejects(verifySchema(runtime), /network/);
+  await pool.query(
+    "ALTER TABLE settings DISABLE TRIGGER fixed_settings; UPDATE settings SET value='testnet' WHERE key='network'; ALTER TABLE settings ENABLE TRIGGER fixed_settings",
+  );
+  await pool.query("DELETE FROM organiser");
+  await assert.rejects(startPostgresStaging(runtime, origin), /organiser/);
+  assert.equal(
+    (await pool.query("SELECT count(*) AS n FROM organiser")).rows[0].n,
+    0,
+  );
+  await bootstrap(pool, hash);
+  await assert.rejects(bootstrap(pool, hash), /never overwritten/);
+  await verifySchema(runtime);
+  assert.deepEqual(
+    (await pool.query("SELECT * FROM schema_migrations ORDER BY version")).rows,
+    original,
+  );
+  const empty = await database(t, false);
+  await assert.rejects(verifySchema(empty.pool));
+  assert.equal(
+    (
+      await empty.pool.query(
+        "SELECT count(*) AS n FROM pg_tables WHERE schemaname='public'",
+      )
+    ).rows[0].n,
+    0,
+  );
+});
+
+test("restricted role cannot issue DDL, create roles, bootstrap, migrate, delegate, or reset immutable payment locks", async (t) => {
+  const { pool, name } = await database(t);
+  await paymentFixture(pool);
+  const runtime = runtimePool(name);
+  await verifyRuntimeRole(runtime);
+  for (const sql of [
+    "CREATE TABLE public.forbidden(id integer)",
+    "CREATE SCHEMA forbidden",
+    "CREATE TEMP TABLE forbidden(id integer)",
+    "ALTER TABLE campaigns ADD COLUMN forbidden text",
+    "DROP TABLE sessions",
+    "TRUNCATE events",
+    "DELETE FROM sessions",
+    "CREATE ROLE forbidden_role",
+    "ALTER ROLE nimclaim_app SUPERUSER",
+    "SET ROLE postgres",
+    "GRANT postgres TO nimclaim_app",
+    "ALTER TABLE payment_attempts DISABLE TRIGGER ALL",
+    "SET session_replication_role=replica",
+    "INSERT INTO organiser VALUES (1,'forbidden')",
+    "UPDATE organiser SET password_hash='forbidden'",
+    "UPDATE schema_migrations SET checksum='forbidden'",
+    "UPDATE settings SET value='mainnet'",
+    "UPDATE payment_intents SET amount=1",
+    "DELETE FROM payment_attempts",
+    "INSERT INTO payment_hashes VALUES ('forbidden','attempt1')",
+    "UPDATE payment_attempts SET permit_hash='forbidden'",
+    "UPDATE claims SET address='forbidden'",
+    "UPDATE events SET status='forbidden'",
+    "UPDATE payment_events SET state='CONFIRMED'",
+    "SELECT nextval('events_id_seq')",
+    "SELECT setval('events_id_seq',1)",
+    "SELECT pg_read_file('/etc/passwd')",
+  ])
+    await assert.rejects(runtime.query(sql), { code: "42501" }, sql);
+  // These writes have column grants; immutable triggers, rather than ACLs, reject them.
+  await assert.rejects(runtime.query("UPDATE campaigns SET id='forbidden'"), {
+    code: "23514",
+  });
+  await assert.rejects(
+    runtime.query("UPDATE payment_attempts SET state='SUBMITTING'"),
+    { code: "23514" },
+  );
+  await assert.rejects(runtime.query("UPDATE claims SET status='pending'"), {
+    code: "23514",
+  });
+  await assert.rejects(migrate(runtime), { code: "42501" });
+  const fresh = await database(t, false);
+  await migrate(fresh.pool);
+  await grantRuntime(fresh.pool, fresh.name);
+  const unbootstrapped = runtimePool(fresh.name);
+  await assert.rejects(bootstrap(unbootstrapped, hash), { code: "42501" });
+  assert.equal(
+    (await fresh.pool.query("SELECT count(*) AS n FROM organiser")).rows[0].n,
+    0,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*) AS n FROM payment_attempts WHERE state='UNKNOWN'",
+      )
+    ).rows[0].n,
+    2,
+  );
+});
+
+test("runtime privilege verification rejects extra column grants, grant options and inherited administrative access", async (t) => {
+  const { pool, name } = await database(t);
+  const runtime = runtimePool(name);
+  for (const [grant, revoke] of [
+    [
+      "GRANT DELETE ON sessions TO nimclaim_app",
+      "REVOKE DELETE ON sessions FROM nimclaim_app",
+    ],
+    [
+      "GRANT UPDATE (permit_hash) ON payment_attempts TO nimclaim_app",
+      "REVOKE UPDATE (permit_hash) ON payment_attempts FROM nimclaim_app",
+    ],
+    [
+      "GRANT CREATE ON SCHEMA public TO nimclaim_app",
+      "REVOKE CREATE ON SCHEMA public FROM nimclaim_app",
+    ],
+    [
+      "GRANT pg_read_all_data TO nimclaim_app",
+      "REVOKE pg_read_all_data FROM nimclaim_app",
+    ],
+    [
+      "GRANT SET ON PARAMETER session_replication_role TO nimclaim_app",
+      "REVOKE SET ON PARAMETER session_replication_role FROM nimclaim_app",
+    ],
+    [
+      "GRANT SELECT ON sessions TO nimclaim_app WITH GRANT OPTION",
+      "REVOKE GRANT OPTION FOR SELECT ON sessions FROM nimclaim_app",
+    ],
+  ]) {
+    await pool.query(grant);
+    try {
+      await assert.rejects(verifyRuntimeRole(runtime));
+    } finally {
+      await pool.query(revoke);
+    }
+    await verifyRuntimeRole(runtime);
+  }
+});
+
+test("restricted runtime revokes sessions and replaces challenges without DELETE or sequence grants", async (t) => {
+  const { pool, name } = await database(t);
+  const api = await worker(name);
+  const user = client(api.port);
+  const login = await user.login();
+  const oldCookie = login.headers["set-cookie"]![0].split(";")[0];
+  const before = (await pool.query("SELECT hash FROM sessions")).rows[0].hash;
+  assert.equal((await user.call("/api/logout", {})).status, 200);
+  assert.equal(
+    (await user.call("/api/session", undefined, { Cookie: oldCookie })).body
+      .authenticated,
+    false,
+  );
+  assert.equal(
+    (await pool.query("SELECT expires FROM sessions WHERE hash=$1", [before]))
+      .rows[0].expires,
+    0,
+  );
+  await user.login();
+  assert.equal(
+    (
+      await pool.query("SELECT count(*) AS n FROM sessions WHERE hash=$1", [
+        before,
+      ])
+    ).rows[0].n,
+    1,
+  );
+  const c = await campaign(user, 1);
+  const token = await invitation(user, c.id);
+  const old = await proof(user, token),
+    fresh = await proof(user, token);
+  assert.equal(
+    (
+      await pool.query("SELECT used FROM challenges WHERE id=$1", [
+        old.challenge.id,
+      ])
+    ).rows[0].used,
+    1,
+  );
+  assert.equal((await user.call("/api/claim", old.body)).status, 409);
+  assert.equal((await user.call("/api/claim", fresh.body)).status, 201);
+  assert.equal(
+    (await pool.query("SELECT count(*) AS n FROM events")).rows[0].n,
+    1,
+  );
+});
+
+test("restricted runtime preserves stale SUBMITTING to UNKNOWN and append-only history without reservation privileges", async (t) => {
+  const { pool, name } = await database(t);
+  await paymentFixture(pool);
+  // Owner creates the pre-existing crash fixture; runtime never reserves a payment.
+  await pool.query(
+    "ALTER TABLE payment_attempts DISABLE TRIGGER lock_attempt; UPDATE payment_attempts SET state='SUBMITTING' WHERE id='attempt1'; ALTER TABLE payment_attempts ENABLE TRIGGER lock_attempt",
+  );
+  await pool.query(
+    "ALTER TABLE payment_intents DISABLE TRIGGER immutable_payment_intent; UPDATE payment_intents SET expires=0 WHERE id='intent1'; ALTER TABLE payment_intents ENABLE TRIGGER immutable_payment_intent",
+  );
+  const runtime = runtimePool(name);
+  await verifyRuntimeRole(runtime);
+  await verifySchema(runtime);
+  const { PostgresStore } = await import("../../server/postgres/store.js");
+  const store = new PostgresStore(runtime, origin);
+  const claim = (await pool.query("SELECT * FROM claims WHERE id='claim1'"))
+    .rows[0];
+  assert.equal((await store.claimView(claim))!.payment!.state, "UNKNOWN");
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*) AS n FROM payment_events WHERE attempt_id='attempt1' AND state='UNKNOWN'",
+      )
+    ).rows[0].n,
+    2,
+  );
+  await store.claimView(claim);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*) AS n FROM payment_events WHERE attempt_id='attempt1'",
+      )
+    ).rows[0].n,
+    2,
+  );
+  await assert.rejects(
+    runtime.query(
+      "UPDATE payment_attempts SET state='SUBMITTING' WHERE id='attempt1'",
+    ),
+    { code: "23514" },
+  );
+});
+
+test("explicit admin configuration requires the approved direct TESTNET target and never accepts the runtime role", async () => {
+  const { adminConfig } = await import("../../ops/staging-admin.js");
+  const url = new URL(
+    "postgresql://synthetic:example-only@ep-synthetic.eu-central-1.aws.neon.tech/nimclaim?sslmode=verify-full",
+  );
+  url.hostname = "ep-royal-sunset-b9d4cl7u.c-7.eu-central-1.aws.neon.tech";
+  const env = {
+    NETWORK: "testnet",
+    SPENDING_ENABLED: "false",
+    DIRECT_DATABASE_URL: url.toString(),
+  };
+  assert.equal(adminConfig(env).max, 1);
+  for (const patch of [
+    { DIRECT_DATABASE_URL: "" },
+    { NETWORK: "mainnet" },
+    { SPENDING_ENABLED: "true" },
+    { DIRECT_DATABASE_URL: url.toString().replace("/nimclaim", "/other") },
+    {
+      DIRECT_DATABASE_URL: url
+        .toString()
+        .replace("synthetic:", "nimclaim_app:"),
+    },
+    {
+      DIRECT_DATABASE_URL: url
+        .toString()
+        .replace("sunset-b9d4cl7u.", "sunset-b9d4cl7u-pooler."),
+    },
+    { NODE_TLS_REJECT_UNAUTHORIZED: "0" },
+  ])
+    assert.throws(() => adminConfig({ ...env, ...patch }));
+  const child = spawn(
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      "ops/staging-admin.ts",
+      "bootstrap",
+      ".local/nonexistent-admin-test.env",
+      ".local/nonexistent-admin-credentials.json",
+    ],
+    { stdio: ["ignore", "pipe", "pipe"], env: { PATH: process.env.PATH } },
+  );
+  let output = "";
+  child.stdout.on("data", (b) => {
+    output += b;
+  });
+  child.stderr.on("data", (b) => {
+    output += b;
+  });
+  const [code] = await once(child, "exit");
+  assert.equal(code, 1);
+  assert.match(output, /command refused/);
+  assert.doesNotMatch(output, /postgresql:\/\/|password|example-only/);
+});
+
+test("runtime transaction-local settings do not leak between pooled clients and read-only verification performs no writes", async (t) => {
+  const { pool, name } = await database(t);
+  const runtime = runtimePool(name);
+  const { transaction } = await import("../../server/postgres/db.js");
+  const before = (await pool.query("SELECT * FROM organiser")).rows;
+  const ledger = (
+    await pool.query("SELECT * FROM schema_migrations ORDER BY version")
+  ).rows;
+  await Promise.all(
+    Array.from({ length: 6 }, () =>
+      transaction(runtime, async (c) => {
+        assert.equal(
+          (await c.query("SHOW lock_timeout")).rows[0].lock_timeout,
+          "5s",
+        );
+        assert.equal(
+          (await c.query("SHOW search_path")).rows[0].search_path,
+          "public, pg_catalog",
+        );
+        await c.query("SET TRANSACTION READ ONLY");
+        assert.equal(
+          (await c.query("SHOW transaction_read_only")).rows[0]
+            .transaction_read_only,
+          "on",
+        );
+      }),
+    ),
+  );
+  const c = await runtime.connect();
+  try {
+    assert.equal(
+      (await c.query("SHOW lock_timeout")).rows[0].lock_timeout,
+      "0",
+    );
+    assert.equal(
+      (await c.query("SHOW transaction_read_only")).rows[0]
+        .transaction_read_only,
+      "off",
+    );
+  } finally {
+    c.release();
+  }
+  await verifyRuntimeRole(runtime);
+  await verifySchema(runtime);
+  assert.deepEqual((await pool.query("SELECT * FROM organiser")).rows, before);
+  assert.deepEqual(
+    (await pool.query("SELECT * FROM schema_migrations ORDER BY version")).rows,
+    ledger,
+  );
 });

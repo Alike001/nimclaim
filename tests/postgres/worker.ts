@@ -1,5 +1,5 @@
 // Test-only child process. Synthetic local Postgres only; never shipped in the staging entry point.
-import { createPool, migrate, bootstrap } from "../../server/postgres/db.js";
+import { createPool } from "../../server/postgres/db.js";
 import { startPostgresStaging } from "../../server/postgres/staging.js";
 const port = Number(process.env.NIMCLAIM_PG_TEST_PORT);
 if (
@@ -11,13 +11,11 @@ if (
 const pool = createPool({
   host: "127.0.0.1",
   port,
-  user: "postgres",
+  user: "nimclaim_app",
   database: process.env.NIMCLAIM_PG_TEST_DB,
   max: 3,
 });
 try {
-  await migrate(pool);
-  await bootstrap(pool, process.env.NIMCLAIM_PG_TEST_HASH!);
   const app = await startPostgresStaging(
     pool,
     process.env.NIMCLAIM_PG_TEST_ORIGIN!,

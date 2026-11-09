@@ -73,7 +73,7 @@ See [payout architecture and limits](docs/PAYMENTS.md), [mainnet NO-GO checklist
 
 ## PostgreSQL staging path
 
-Hosted TESTNET claims use `pg` and the async store under `server/postgres/`. `npm run start:staging` requires separate pooled `DATABASE_URL` and direct `DIRECT_DATABASE_URL` secrets; verified TLS, migrations and bootstrap must succeed before the public listener opens. There is no SQLite fallback. The regular SQLite start command refuses Render or a Postgres URL. Local setup, SQLite data, credentials and development commands remain independent.
+Hosted TESTNET claims use `pg` and the async store under `server/postgres/`. `npm run start:staging` accepts only the pooled `DATABASE_URL` for the restricted `nimclaim_app` role. It verifies TLS, effective privileges, the migration ledger, reviewed schema structure, TESTNET identity and an existing organiser before listening. Direct credentials and organiser hashes are rejected at runtime. Explicit local `staging:migrate` and one-time `staging:bootstrap` commands perform administrative setup; neither runs during startup or build. There is no SQLite fallback. The regular SQLite start command refuses Render or a Postgres URL. Local setup, SQLite data, credentials and development commands remain independent.
 
 Versioned SQL migrations preserve campaign/invitation/claim/session and durable payment tables, safe integer Luna values, uniqueness, append-only history, immutable intents and permanent attempt locks. PostgreSQL row locks protect invitation slots and challenge consumption across processes. All staging wallet/payment/reconciliation routes are denied and spending cannot be enabled. This is a claim-only TESTNET service, not a Postgres payment execution implementation or mainnet approval.
 

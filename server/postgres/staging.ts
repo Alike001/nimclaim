@@ -1,6 +1,8 @@
 import type { Pool } from "pg";
 import { once } from "node:events";
-import { neonConnection, createPool, migrate, bootstrap } from "./db.js";
+import { neonConnection, createPool } from "./db.js";
+import { verifySchema } from "./schema.js";
+import { verifyRuntimeRole } from "./permissions.js";
 import { createPostgresApp } from "./app.js";
 import { PostgresStore } from "./store.js";
 import { stagingGateway } from "../staging-gateway.js";
@@ -24,23 +26,24 @@ export function postgresStagingConfig(env: NodeJS.ProcessEnv) {
     env.SPENDING_NETWORK ||
     env.RPC_URL ||
     env.RPC_AUTHORIZATION ||
+    env.DIRECT_DATABASE_URL ||
+    env.STAGING_ORGANISER_PASSWORD_HASH ||
+    env.NODE_TLS_REJECT_UNAUTHORIZED === "0" ||
     (env.MAX_PAYMENT_LUNA && env.MAX_PAYMENT_LUNA !== "0") ||
     (env.PAYMENT_FEE_LUNA && env.PAYMENT_FEE_LUNA !== "0")
   )
     throw new Error("Unsafe Postgres TESTNET staging configuration");
-  const hash = env.STAGING_ORGANISER_PASSWORD_HASH;
-  if (!hash || !/^[a-f0-9]{64}:[a-f0-9]{128}$/.test(hash))
-    throw new Error("Fresh staging organiser hash required");
-  const runtime = neonConnection(env.DATABASE_URL, true),
-    direct = neonConnection(env.DIRECT_DATABASE_URL, false);
+  const runtime = neonConnection(env.DATABASE_URL, true);
   if (
-    String(runtime.host).replace("-pooler.", ".") !== direct.host ||
-    runtime.database !== direct.database
+    runtime.user !== "nimclaim_app" ||
+    runtime.database !== "nimclaim" ||
+    runtime.host !==
+      "ep-royal-sunset-b9d4cl7u-pooler.c-7.eu-central-1.aws.neon.tech"
   )
     throw new Error(
-      "Pooled and direct URLs must target the same isolated Neon database",
+      "Approved isolated database and restricted runtime role required",
     );
-  return { origin, hash, runtime, direct };
+  return { origin, runtime };
 }
 // Separate seam for real local PostgreSQL integration tests. Production always uses verified Neon TLS.
 export async function startPostgresStaging(
@@ -48,18 +51,8 @@ export async function startPostgresStaging(
   origin: string,
   staticDir = "./dist",
 ) {
-  const settings = (await pool.query("SELECT key,value FROM settings")).rows;
-  if (
-    !settings.some((r) => r.key === "network" && r.value === "testnet") ||
-    !settings.some(
-      (r) =>
-        r.key === "deployment" &&
-        r.value === "isolated-neon-testnet-staging-v1",
-    )
-  )
-    throw new Error("Wrong staging database identity");
-  if (!(await pool.query("SELECT id FROM organiser WHERE id=1")).rowCount)
-    throw new Error("Staging organiser missing");
+  await verifyRuntimeRole(pool);
+  await verifySchema(pool);
   const server = createPostgresApp(new PostgresStore(pool, origin), staticDir);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -79,13 +72,6 @@ export async function startPostgresStaging(
 }
 export async function startFromEnvironment(env: NodeJS.ProcessEnv) {
   const config = postgresStagingConfig(env);
-  const migrationPool = createPool(config.direct);
-  try {
-    await migrate(migrationPool);
-    await bootstrap(migrationPool, config.hash);
-  } finally {
-    await migrationPool.end();
-  }
   const pool = createPool(config.runtime);
   try {
     return await startPostgresStaging(pool, config.origin);
