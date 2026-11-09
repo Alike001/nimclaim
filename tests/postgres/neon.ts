@@ -23,7 +23,7 @@ try {
     "PASS hosted direct/pooled verified TLS; reviewed schema and TESTNET identity; read-only checks only",
   );
   console.log(
-    "Restricted hosted runtime-role acceptance and organiser bootstrap remain pending",
+    "Restricted hosted runtime-role acceptance is not exercised by this owner-only check",
   );
 } catch {
   console.error("Hosted read-only verification refused; details suppressed");

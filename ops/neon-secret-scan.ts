@@ -4,6 +4,7 @@ import { parseEnv } from "node:util";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { approvedConnections } from "./neon-target.js";
+import { protectedLocalFile } from "./staging-admin.js";
 
 try {
   const { direct, runtime } = approvedConnections();
@@ -16,6 +17,24 @@ try {
   ].filter(
     (value): value is string => typeof value === "string" && value.length > 7,
   );
+  if (existsSync(".local/neon-runtime.env")) {
+    const runtimeEnv = parseEnv(protectedLocalFile(".local/neon-runtime.env"));
+    if (!runtimeEnv.DATABASE_URL) throw new Error();
+    secrets.push(
+      runtimeEnv.DATABASE_URL,
+      decodeURIComponent(new URL(runtimeEnv.DATABASE_URL).password),
+    );
+  }
+  if (existsSync(".local/staging/credentials.json")) {
+    const credentials = JSON.parse(
+      protectedLocalFile(".local/staging/credentials.json"),
+    );
+    for (const key of ["password", "STAGING_ORGANISER_PASSWORD_HASH"]) {
+      if (typeof credentials[key] !== "string" || credentials[key].length < 8)
+        throw new Error();
+      secrets.push(credentials[key]);
+    }
+  }
   secrets.push(...secrets.map(encodeURIComponent));
   let checked = 0;
   function scan(bytes: Buffer) {
