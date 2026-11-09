@@ -14,12 +14,17 @@ import {
 import { connectWallet, signChallenge, walletError } from "./wallet";
 
 type Config = { network: string; origin: string; staging?: boolean };
-function History({ claim }: { claim: Claim }) {
+function reviewLabel(status: string, staging?: boolean) {
+  return staging && status === "payment-ready"
+    ? "Approved for testing"
+    : statusLabel(status);
+}
+function History({ claim, staging }: { claim: Claim; staging?: boolean }) {
   return (
     <ol className="history">
       {claim.history.map((event, i) => (
         <li key={i}>
-          <strong>{statusLabel(event.status)}</strong>
+          <strong>{reviewLabel(event.status, staging)}</strong>
           <time dateTime={new Date(event.at).toISOString()}>
             {date(event.at)}
           </time>
@@ -28,8 +33,10 @@ function History({ claim }: { claim: Claim }) {
     </ol>
   );
 }
-function Badge({ status }: { status: string }) {
-  return <span className={`badge ${status}`}>{statusLabel(status)}</span>;
+function Badge({ status, staging }: { status: string; staging?: boolean }) {
+  return (
+    <span className={`badge ${status}`}>{reviewLabel(status, staging)}</span>
+  );
 }
 function Notice({ text }: { text: string }) {
   return text ? (
@@ -69,7 +76,7 @@ export default function App() {
             config.staging ? (
               <section className="panel">
                 <h1>Page unavailable</h1>
-                <p>Open your private invitation to request a TESTNET reward.</p>
+                <p>Open your private invitation for TESTNET claim testing.</p>
               </section>
             ) : (
               <>
@@ -93,10 +100,16 @@ export default function App() {
           ))}
       </main>
       <footer>
-        Native NIM rewards.{" "}
-        <strong>Native spending is gated on the server.</strong>
-        <br />
-        Nimiq chain data is public. Approval is not proof of payment.
+        {config?.staging ? (
+          "TESTNET claim testing only. Native NIM spending is disabled."
+        ) : (
+          <>
+            Native NIM rewards.{" "}
+            <strong>Native spending is gated on the server.</strong>
+            <br />
+            Nimiq chain data is public. Approval is not proof of payment.
+          </>
+        )}
       </footer>
     </>
   );
@@ -140,10 +153,11 @@ function Organiser({ staging }: { staging?: boolean }) {
     return (
       <section className="panel auth">
         <p className="eyebrow">Organiser workspace</p>
-        <h1>Rewards start here.</h1>
+        <h1>{staging ? "TESTNET claim testing." : "Rewards start here."}</h1>
         <p>
-          Create invitations, review signed claims and prepare contributor
-          rewards.
+          {staging
+            ? "Create private invitations and review signed test claims. No payment will be made."
+            : "Create invitations, review signed claims and prepare contributor rewards."}
         </p>
         <form onSubmit={login}>
           <label>
@@ -164,7 +178,11 @@ function Organiser({ staging }: { staging?: boolean }) {
             ? "Use your separate staging organiser credentials."
             : "First visit? Run the local setup command in the README to create your organiser credentials."}
         </p>
-        <p>Receiving a reward? Open the invitation from your organiser.</p>
+        <p>
+          {staging
+            ? "Testing a claim? Open the invitation from your organiser."
+            : "Receiving a reward? Open the invitation from your organiser."}
+        </p>
       </section>
     );
   return (
@@ -201,6 +219,7 @@ function Organiser({ staging }: { staging?: boolean }) {
         />
       ) : creating ? (
         <CreateCampaign
+          staging={staging}
           cancel={() => setCreating(false)}
           created={(id) => {
             setCreating(false);
@@ -222,7 +241,11 @@ function Organiser({ staging }: { staging?: boolean }) {
               <span className="empty-symbol" aria-hidden="true">
                 ↗
               </span>
-              <h2>A reward for a contribution.</h2>
+              <h2>
+                {staging
+                  ? "Test the claim workflow."
+                  : "A reward for a contribution."}
+              </h2>
               <p>
                 Create your first campaign, then share a unique invitation with
                 each contributor.
@@ -245,7 +268,12 @@ function Organiser({ staging }: { staging?: boolean }) {
                   <h2>{c.title}</h2>
                   <p>{c.description}</p>
                   <div className="amount">
-                    {nim(c.amount)} <small>NIM / reward</small>
+                    {nim(c.amount)}{" "}
+                    <small>
+                      {staging
+                        ? "NIM · illustrative TESTNET amount"
+                        : "NIM / reward"}
+                    </small>
                   </div>
                   <div className="card-meta">
                     <span>
@@ -263,9 +291,11 @@ function Organiser({ staging }: { staging?: boolean }) {
   );
 }
 function CreateCampaign({
+  staging,
   cancel,
   created,
 }: {
+  staging?: boolean;
   cancel: () => void;
   created: (id: string) => void;
 }) {
@@ -296,10 +326,15 @@ function CreateCampaign({
       <button className="text-button" onClick={cancel}>
         ← All campaigns
       </button>
-      <h2>Create a reward campaign</h2>
+      <h2>
+        {staging
+          ? "Create a TESTNET testing campaign"
+          : "Create a reward campaign"}
+      </h2>
       <p>
-        Each invitation reserves one reward slot. Campaign details are fixed
-        once created.
+        {staging
+          ? "Each invitation uses one claim-testing slot. Campaign details are fixed once created."
+          : "Each invitation reserves one reward slot. Campaign details are fixed once created."}
       </p>
       <form onSubmit={submit}>
         <label>
@@ -318,12 +353,18 @@ function CreateCampaign({
             required
             maxLength={2000}
             rows={3}
-            placeholder="What are you rewarding, and who is eligible?"
+            placeholder={
+              staging
+                ? "What are you testing, and who should participate?"
+                : "What are you rewarding, and who is eligible?"
+            }
           />
         </label>
         <div className="form-row">
           <label>
-            Reward amount (NIM)
+            {staging
+              ? "Illustrative TESTNET amount (NIM)"
+              : "Reward amount (NIM)"}
             <input
               name="amount"
               type="number"
@@ -335,7 +376,7 @@ function CreateCampaign({
             />
           </label>
           <label>
-            Available rewards
+            {staging ? "Available testing slots" : "Available rewards"}
             <input
               name="slots"
               type="number"
@@ -352,8 +393,9 @@ function CreateCampaign({
           <input name="expires" type="datetime-local" required />
         </label>
         <p className="muted">
-          No funds are held or sent. The amount is a reward commitment for
-          organiser review.
+          {staging
+            ? "TESTNET testing only. This amount is illustrative and non-redeemable. No NIM is held, owed, reserved, transferred or paid. Approval records an organiser review decision only."
+            : "No funds are held or sent. The amount is a reward commitment for organiser review."}
         </p>
         <Notice text={error} />
         <button disabled={busy}>
@@ -433,7 +475,13 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
       </button>
       <section className="panel campaign-summary">
         <p className="eyebrow">
-          {expired ? "Expired campaign" : "Reward campaign"}
+          {data.staging
+            ? expired
+              ? "Expired TESTNET testing campaign"
+              : "TESTNET testing campaign"
+            : expired
+              ? "Expired campaign"
+              : "Reward campaign"}
         </p>
         <h2>{c.title}</h2>
         <p className="description">{c.description}</p>
@@ -442,7 +490,9 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
             <strong>
               {nim(c.amount)} <small>NIM</small>
             </strong>
-            <span>per contributor</span>
+            <span>
+              {data.staging ? "Illustrative TESTNET amount" : "per contributor"}
+            </span>
           </div>
           <div>
             <strong>
@@ -468,8 +518,9 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
       <section className="panel">
         <h2>Invite a contributor</h2>
         <p>
-          One link, one reward slot. Anyone with the link can request the
-          reward. Share it directly with the intended recipient.
+          {data.staging
+            ? "Invitations are for claim-workflow testing only. One link uses one testing slot. Share it directly with the intended tester. No payment will be made."
+            : "One link, one reward slot. Anyone with the link can request the reward. Share it directly with the intended recipient."}
         </p>
         <button
           disabled={
@@ -545,17 +596,17 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
       ) : (
         data.claims.map((claim) => (
           <section className="panel claim-card" key={claim.id}>
-            <Badge status={claimStatus(claim)} />
+            <Badge status={claimStatus(claim)} staging={data.staging} />
             <h3>Verified recipient</h3>
             <code className="address">{claim.address}</code>
-            <History claim={claim} />
+            <History claim={claim} staging={data.staging} />
             {claim.status === "pending" && (
               <div className="actions">
                 <button
                   disabled={busy || expired}
                   onClick={() => decide(claim, "payment-ready")}
                 >
-                  Approve for payment
+                  {data.staging ? "Approve claim" : "Approve for payment"}
                 </button>
                 <button
                   className="secondary"
@@ -568,8 +619,14 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
             )}
             {claim.status === "payment-ready" && !claim.payment && (
               <p className="muted">
-                Approved for {nim(c.amount)} NIM. Approval alone does not prove
-                payment.
+                {data.staging ? (
+                  "Approved for testing — no payment will be made"
+                ) : (
+                  <>
+                    Approved for {nim(c.amount)} NIM. Approval alone does not
+                    prove payment.
+                  </>
+                )}
               </p>
             )}
             {claim.status === "payment-ready" && !data.staging && (
@@ -651,7 +708,11 @@ function Recipient({ token, config }: { token: string; config: Config }) {
   if (!data)
     return (
       <section className="panel">
-        <h1>Your reward invitation</h1>
+        <h1>
+          {config.staging
+            ? "Your TESTNET testing invitation"
+            : "Your reward invitation"}
+        </h1>
         <Notice text={error} />
         {!error && <p role="status">Loading invitation…</p>}
         <button
@@ -672,14 +733,20 @@ function Recipient({ token, config }: { token: string; config: Config }) {
       <h1>{c.title}</h1>
       <p className="description">{c.description}</p>
       <section className="panel reward">
-        <span>Your reward commitment</span>
+        <span>
+          {config.staging
+            ? "Illustrative TESTNET amount"
+            : "Your reward commitment"}
+        </span>
         <div className="reward-amount">
           {nim(c.amount)} <small>NIM</small>
         </div>
         <p>
-          {data.claim?.payment
-            ? "Payment details and independently verified outcomes are shown below. No funds are held in escrow."
-            : "Subject to organiser approval. Funds have not been reserved or sent."}
+          {config.staging
+            ? "TESTNET claim-workflow testing only. This amount is illustrative and non-redeemable. Signing verifies wallet ownership only. Approval records an organiser review decision and does not trigger a payment."
+            : data.claim?.payment
+              ? "Payment details and independently verified outcomes are shown below. No funds are held in escrow."
+              : "Subject to organiser approval. Funds have not been reserved or sent."}
         </p>
         <p className="muted">
           Expires {date(c.expires)} · {config.network}
@@ -692,23 +759,25 @@ function Recipient({ token, config }: { token: string; config: Config }) {
       <Notice text={error} />
       {data.claim ? (
         <section className="panel">
-          <Badge status={claimStatus(data.claim)} />
+          <Badge status={claimStatus(data.claim)} staging={config.staging} />
           <h2>
-            {claimStatus(data.claim) === "paid"
-              ? "Your reward is paid."
-              : claimStatus(data.claim) === "failed"
-                ? "Payment failed. Reward unpaid."
-                : data.claim.payment
-                  ? "Payment verification is pending."
-                  : data.claim.status === "payment-ready"
-                    ? "Approved. Awaiting payment."
-                    : data.claim.status === "pending"
-                      ? "Your request is with the organiser."
-                      : "Your claim is closed."}
+            {config.staging && data.claim.status === "payment-ready"
+              ? "Approved for testing — no payment will be made"
+              : claimStatus(data.claim) === "paid"
+                ? "Your reward is paid."
+                : claimStatus(data.claim) === "failed"
+                  ? "Payment failed. Reward unpaid."
+                  : data.claim.payment
+                    ? "Payment verification is pending."
+                    : data.claim.status === "payment-ready"
+                      ? "Approved. Awaiting payment."
+                      : data.claim.status === "pending"
+                        ? "Your request is with the organiser."
+                        : "Your claim is closed."}
           </h2>
           <p>Wallet ownership verified for:</p>
           <code className="address">{data.claim.address}</code>
-          <History claim={data.claim} />
+          <History claim={data.claim} staging={config.staging} />
           {!data.claim.payment && (
             <p>No NIM has been transferred through NimClaim.</p>
           )}
@@ -717,7 +786,11 @@ function Recipient({ token, config }: { token: string; config: Config }) {
       ) : data.expired ? (
         <section className="panel">
           <h2>This invitation has expired.</h2>
-          <p>Contact your organiser about future rewards.</p>
+          <p>
+            {config.staging
+              ? "Contact your organiser about future testing."
+              : "Contact your organiser about future rewards."}
+          </p>
         </section>
       ) : (
         <section className="panel">
@@ -755,8 +828,19 @@ function Recipient({ token, config }: { token: string; config: Config }) {
           {challenge && (
             <>
               <p>
-                This signature requests {nim(c.amount)} NIM from this campaign
-                on {config.network}. It expires at {date(challenge.expires)}.
+                {config.staging ? (
+                  <>
+                    This signature verifies wallet ownership for claim-workflow
+                    testing on {config.network}. It does not request or
+                    authorize a payment.
+                  </>
+                ) : (
+                  <>
+                    This signature requests {nim(c.amount)} NIM from this
+                    campaign on {config.network}.
+                  </>
+                )}{" "}
+                It expires at {date(challenge.expires)}.
               </p>
               <details>
                 <summary>Review exact message</summary>

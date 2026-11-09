@@ -25,7 +25,7 @@ test("organiser login is accessible after application readiness", async ({
     ).violations,
   ).toEqual([]);
 });
-async function invitation(page: Page) {
+async function invitation(page: Page, staging = false) {
   await login(page);
   await page.getByRole("button", { name: "＋ Create campaign" }).click();
   await page
@@ -34,8 +34,22 @@ async function invitation(page: Page) {
   await page
     .getByLabel("Description")
     .fill("Synthetic campaign for automated browser verification.");
-  await page.getByLabel("Reward amount (NIM)").fill("3.25");
-  await page.getByLabel("Available rewards").fill("1");
+  await page
+    .getByLabel(
+      staging ? "Illustrative TESTNET amount (NIM)" : "Reward amount (NIM)",
+    )
+    .fill("3.25");
+  await page
+    .getByLabel(staging ? "Available testing slots" : "Available rewards")
+    .fill("1");
+  await expect(
+    page.getByText(
+      staging
+        ? "TESTNET testing only. This amount is illustrative and non-redeemable. No NIM is held, owed, reserved, transferred or paid. Approval records an organiser review decision only."
+        : "No funds are held or sent. The amount is a reward commitment for organiser review.",
+      { exact: true },
+    ),
+  ).toBeVisible();
   const tomorrow = new Date(Date.now() + 86400_000);
   // datetime-local takes wall-clock text; UTC tomorrow is safely in the future in all test zones.
   await page
@@ -125,10 +139,30 @@ test("organiser, synthetic wallet signature, review and recipient status survive
   ).toEqual([]);
   const signer = await injectWallet(recipient, "success");
   await recipient.goto(url);
+  await expect(
+    recipient.getByText("Your reward commitment", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    recipient.getByText(
+      "Subject to organiser approval. Funds have not been reserved or sent.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    recipient.getByText("Illustrative TESTNET amount", { exact: true }),
+  ).toHaveCount(0);
+  await expect(recipient.locator("footer")).toContainText(
+    "Native spending is gated on the server.",
+  );
   await recipient
     .getByRole("button", { name: "Connect Nimiq Pay", exact: true })
     .click();
   await expect(recipient.getByText("Nimiq Pay connected")).toBeVisible();
+  await expect(
+    recipient.getByText("This signature requests 3.25 NIM from this campaign", {
+      exact: false,
+    }),
+  ).toBeVisible();
   await recipient.getByRole("button", { name: "Sign & submit claim" }).click();
   await expect(
     recipient.getByRole("heading", {
@@ -188,6 +222,137 @@ test("organiser, synthetic wallet signature, review and recipient status survive
     path: `test-results/recipient-${test.info().project.name}.png`,
     fullPage: true,
   });
+});
+
+test("staging presents real test claims as illustrative and approval never promises payment", async ({
+  page,
+  context,
+}) => {
+  // Change presentation flags only. Campaigns, invitations, signatures and
+  // decisions still use the real isolated API; no claims or receipts are mocked.
+  await context.route(
+    /\/api\/(?:config|campaigns\/[a-f0-9-]{36})$/,
+    async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        response,
+        json: { ...(await response.json()), staging: true },
+      });
+    },
+  );
+  const url = await invitation(page, true);
+  const title = await page.locator(".campaign-summary h2").innerText();
+  await expect(
+    page.getByText("TESTNET testing campaign", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Illustrative TESTNET amount", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Invitations are for claim-workflow testing only.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Authorize campaign wallet",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  const recipient = await context.newPage();
+  await injectWallet(recipient, "success");
+  await recipient.goto(url);
+  await expect(
+    recipient.getByText("Illustrative TESTNET amount", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    recipient.getByText("Your reward commitment", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    recipient.getByText("Signing verifies wallet ownership only.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await expect(
+    recipient.getByText("does not trigger a payment.", { exact: false }),
+  ).toBeVisible();
+  await recipient
+    .getByRole("button", { name: "Connect Nimiq Pay", exact: true })
+    .click();
+  await expect(
+    recipient.getByText(
+      "This signature verifies wallet ownership for claim-workflow testing",
+      { exact: false },
+    ),
+  ).toBeVisible();
+  await expect(
+    recipient.getByText("This signature requests", { exact: false }),
+  ).toHaveCount(0);
+  await recipient.getByRole("button", { name: "Sign & submit claim" }).click();
+  await expect(
+    recipient.getByRole("heading", {
+      name: "Your request is with the organiser.",
+    }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Approve for payment", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Approve claim", exact: true })
+    .click();
+  await expect(
+    page.getByText("Approved for testing — no payment will be made", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.locator(".badge.payment-ready")).toHaveText(
+    "Approved for testing",
+  );
+  await expect(
+    page.getByRole("button", {
+      name: "Review native NIM payment",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await recipient.reload();
+  await expect(
+    recipient.getByRole("heading", {
+      name: "Approved for testing — no payment will be made",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(recipient.locator(".history")).toContainText(
+    "Approved for testing",
+  );
+  await expect(
+    recipient.getByText(/Awaiting payment|Payment-ready · unpaid/),
+  ).toHaveCount(0);
+  for (const current of [page, recipient]) {
+    await expect(current.locator("footer")).toHaveText(
+      "TESTNET claim testing only. Native NIM spending is disabled.",
+    );
+    expect(
+      await current.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  }
+  await page
+    .getByRole("button", { name: "← All campaigns", exact: true })
+    .click();
+  await expect(
+    page.getByText("NIM · illustrative TESTNET amount", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button")
+    .filter({ has: page.getByRole("heading", { name: title, exact: true }) })
+    .click();
+  await expect(
+    page.getByText("Approved for testing — no payment will be made", {
+      exact: true,
+    }),
+  ).toBeVisible();
 });
 
 test("ordinary browser shows wallet unavailable and keeps invitation usable", async ({
