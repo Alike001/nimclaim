@@ -110,7 +110,7 @@ async function database(t: { after: Function }, initialize = true) {
   }
   return { name, pool };
 }
-async function worker(name: string, appOrigin = origin) {
+async function worker(name: string, appOrigin = origin, mainnet = false) {
   const child = spawn(
     process.execPath,
     ["--import", "tsx", "tests/postgres/worker.ts"],
@@ -120,6 +120,7 @@ async function worker(name: string, appOrigin = origin) {
         ...process.env,
         NIMCLAIM_PG_TEST_DB: name,
         NIMCLAIM_PG_TEST_ORIGIN: appOrigin,
+        NIMCLAIM_PG_TEST_MAINNET: mainnet ? "1" : "0",
       },
     },
   );
@@ -1564,4 +1565,206 @@ test("runtime transaction-local settings do not leak between pooled clients and 
     (await pool.query("SELECT * FROM schema_migrations ORDER BY version")).rows,
     ledger,
   );
+});
+
+async function mainnetDatabase(t: { after: Function }) {
+  const { mainnetIdentity } = await import("../../server/postgres/mainnet.js");
+  const db = await database(t, false);
+  await migrate(db.pool, mainnetIdentity.directory, mainnetIdentity.deployment);
+  await bootstrap(db.pool, hash, mainnetIdentity);
+  await db.pool.query(
+    readFileSync("ops/nimclaim-mainnet-grants.sql", "utf8").replaceAll(
+      "nimclaim_mainnet",
+      db.name,
+    ),
+  );
+  return db;
+}
+test("MAINNET real Postgres signs and persists claims and organiser binding across processes; payouts stay blocked", async (t) => {
+  const { pool, name } = await mainnetDatabase(t);
+  const appOrigin = "https://nimclaim-mainnet.onrender.com";
+  const api = await worker(name, appOrigin, true);
+  const organiser = client(api.port, appOrigin);
+  const publicClient = client(api.port, appOrigin);
+  const config = (await organiser.call("/api/config")).body;
+  assert.equal(config.network, "mainnet");
+  assert.equal(config.staging, false);
+  assert.equal(config.claimsOnly, true);
+  const login = await organiser.login();
+  assert.match(
+    login.headers["set-cookie"]![0],
+    /^nimclaim_mainnet_session=.*; Secure$/,
+  );
+  const c = await campaign(organiser, 2);
+  const challengePath = `/api/campaigns/${c.id}/wallet/challenge`;
+  assert.equal((await publicClient.call(challengePath, {})).status, 401);
+  assert.equal(
+    (
+      await organiser.call(
+        challengePath,
+        {},
+        { Origin: "https://other.invalid" },
+      )
+    ).status,
+    403,
+  );
+  const binding = (await organiser.call(challengePath, {})).body;
+  const owner = testSigner();
+  assert.equal(JSON.parse(binding.message).network, "mainnet");
+  const walletProof = {
+    challengeId: binding.id,
+    publicKey: owner.publicKey,
+    signature: owner.sign(binding.message),
+  };
+  const otherSession = client(api.port, appOrigin);
+  await otherSession.login();
+  assert.equal(
+    (await otherSession.call(`/api/campaigns/${c.id}/wallet`, walletProof))
+      .status,
+    409,
+  );
+  assert.equal(
+    (
+      await organiser.call(`/api/campaigns/${c.id}/wallet`, {
+        ...walletProof,
+        signature: "0".repeat(128),
+      })
+    ).status,
+    401,
+  );
+  assert.equal(
+    (await organiser.call(`/api/campaigns/${c.id}/wallet`, walletProof)).status,
+    201,
+  );
+  assert.equal(
+    (await organiser.call(`/api/campaigns/${c.id}/wallet`, walletProof)).status,
+    409,
+  );
+  const invitationResult = await organiser.call(
+    `/api/campaigns/${c.id}/invitations`,
+    {},
+  );
+  assert.equal(invitationResult.status, 201);
+  assert.equal(new URL(invitationResult.body.url).origin, appOrigin);
+  const token = new URL(invitationResult.body.url).hash.slice(7);
+  const stale = await proof(publicClient, token);
+  const fresh = await proof(publicClient, token);
+  assert.equal(JSON.parse(fresh.challenge.message).network, "mainnet");
+  assert.equal((await publicClient.call("/api/claim", stale.body)).status, 409);
+  const result = await publicClient.call("/api/claim", fresh.body);
+  assert.equal(result.status, 201);
+  assert.equal((await publicClient.call("/api/claim", fresh.body)).status, 409);
+  const claimId = result.body.claim.id;
+  assert.equal(
+    (
+      await organiser.call(`/api/claims/${claimId}/decision`, {
+        decision: "payment-ready",
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await organiser.call(`/api/claims/${claimId}/decision`, {
+        decision: "rejected",
+      })
+    ).status,
+    409,
+  );
+  for (const port of [api.port, api.backend]) {
+    const caller = client(port, appOrigin);
+    await caller.login();
+    const attempt = await caller.call(
+      `/api/claims/${claimId}/payment/reserve`,
+      {},
+    );
+    assert.ok([403, 404].includes(attempt.status));
+    assert.ok(
+      [403, 404].includes(
+        (
+          await caller.call(`/api/payments/${claimId}/reconcile`, {
+            hash: "a".repeat(64),
+          })
+        ).status,
+      ),
+    );
+  }
+  await api.stop();
+  const restarted = await worker(name, appOrigin, true);
+  const existing = client(restarted.port, appOrigin);
+  assert.equal(
+    (
+      await existing.call("/api/session", undefined, {
+        Cookie: login.headers["set-cookie"]![0].split(";")[0],
+      })
+    ).body.authenticated,
+    true,
+  );
+  await existing.login();
+  const detail = (await existing.call(`/api/campaigns/${c.id}`)).body;
+  assert.equal(detail.wallet.address, owner.address);
+  assert.equal(detail.claims[0].status, "payment-ready");
+  assert.equal(detail.claims[0].payment, null);
+  assert.equal(detail.paymentGate.enabled, false);
+  assert.equal(detail.claimsOnly, true);
+  assert.equal(
+    (await pool.query("SELECT count(*) AS n FROM payment_attempts")).rows[0].n,
+    0,
+  );
+  const runtime = runtimePool(name);
+  await verifyRuntimeRole(runtime, true);
+  await assert.rejects(verifyRuntimeRole(runtime)); // production grants cannot silently enter staging
+  for (const sql of [
+    "INSERT INTO payment_hashes VALUES ('fake','fake')",
+    "SELECT * FROM payment_attempts",
+    "UPDATE settings SET value='testnet'",
+    "DELETE FROM campaign_wallets",
+    "UPDATE claims SET address='fake'",
+    "UPDATE campaign_wallets SET address='fake'",
+  ])
+    await assert.rejects(runtime.query(sql), { code: "42501" });
+});
+
+test("MAINNET startup refuses TESTNET identities and staging refuses MAINNET; origin/network signature replay fails", async (t) => {
+  const { mainnetIdentity, startPostgresMainnet } =
+    await import("../../server/postgres/mainnet.js");
+  const { startPostgresStaging } =
+    await import("../../server/postgres/staging.js");
+  const staging = await database(t);
+  await assert.rejects(verifySchema(staging.pool, true, mainnetIdentity));
+  await assert.rejects(startPostgresMainnet(runtimePool(staging.name), origin));
+  const { pool, name } = await mainnetDatabase(t);
+  await assert.rejects(startPostgresStaging(runtimePool(name), origin));
+  await assert.rejects(migrate(pool));
+  await assert.rejects(bootstrap(pool, hash));
+  const { PostgresStore } = await import("../../server/postgres/store.js");
+  const runtime = runtimePool(name);
+  const store = new PostgresStore(
+    runtime,
+    "https://nimclaim-mainnet.onrender.com",
+    "mainnet",
+  );
+  const id = randomBytes(16).toString("hex");
+  await pool.query(
+    "INSERT INTO campaigns VALUES ($1,'Synthetic','Test',1,1,$2,$3)",
+    [id, Date.now() + 3600000, Date.now()],
+  );
+  const token = new URL((await store.issue(id)).url).hash.slice(7);
+  const signer = testSigner();
+  const challenge = await store.challenge(token);
+  const input = {
+    token,
+    challengeId: challenge.id,
+    publicKey: signer.publicKey,
+    signature: signer.sign(challenge.message),
+  };
+  await assert.rejects(
+    new PostgresStore(runtime, store.origin, "testnet").claim(input),
+    /network/,
+  );
+  await assert.rejects(
+    new PostgresStore(runtime, "https://other.invalid", "mainnet").claim(input),
+    /origin/,
+  );
+  assert.equal((await store.claim(input)).address, signer.address);
 });

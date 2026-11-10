@@ -11,7 +11,109 @@ export class PostgresStore {
   constructor(
     public pool: Pool,
     public origin: string,
+    public network: "testnet" | "mainnet" = "testnet",
   ) {}
+  async walletChallenge(campaignId: string, sessionHash: string) {
+    return transaction(this.pool, async (c) => {
+      const campaign = (
+        await c.query("SELECT * FROM campaigns WHERE id=$1 FOR UPDATE", [
+          campaignId,
+        ])
+      ).rows[0];
+      if (!campaign) fail(404, "Campaign not found.");
+      if (campaign.expires <= Date.now()) fail(410, "Campaign has expired.");
+      if (
+        (
+          await c.query(
+            "SELECT address FROM campaign_wallets WHERE campaign_id=$1",
+            [campaignId],
+          )
+        ).rowCount
+      )
+        fail(409, "Campaign wallet is already authorized and immutable.");
+      await c.query(
+        "UPDATE organiser_challenges SET used=1 WHERE campaign_id=$1 AND session_hash=$2 AND purpose='bind' AND used=0",
+        [campaignId, sessionHash],
+      );
+      const id = randomUUID(),
+        expires = Math.min(Date.now() + 300000, campaign.expires);
+      const message = JSON.stringify({
+        domain: "NimClaim/organiser/bind/v1",
+        purpose:
+          "Authorize this signing wallet for this campaign; no payment or transaction",
+        origin: this.origin,
+        network: this.network,
+        details: { campaign: campaignId, amountLuna: campaign.amount },
+        nonce: randomToken(),
+        expires,
+      });
+      await c.query(
+        "INSERT INTO organiser_challenges(id,campaign_id,session_hash,purpose,message,expires) VALUES ($1,$2,$3,'bind',$4,$5)",
+        [id, campaignId, sessionHash, message, expires],
+      );
+      return { id, message, expires };
+    });
+  }
+  async bindWallet(
+    campaignId: string,
+    sessionHash: string,
+    input: { challengeId: string; publicKey: string; signature: string },
+  ) {
+    return transaction(this.pool, async (c) => {
+      const campaign = (
+        await c.query("SELECT * FROM campaigns WHERE id=$1 FOR UPDATE", [
+          campaignId,
+        ])
+      ).rows[0];
+      if (!campaign) fail(404, "Campaign not found.");
+      if (campaign.expires <= Date.now()) fail(410, "Campaign has expired.");
+      if (
+        (
+          await c.query(
+            "SELECT address FROM campaign_wallets WHERE campaign_id=$1",
+            [campaignId],
+          )
+        ).rowCount
+      )
+        fail(409, "Campaign wallet is already authorized and immutable.");
+      const challenge = (
+        await c.query(
+          "SELECT * FROM organiser_challenges WHERE id=$1 AND campaign_id=$2 AND session_hash=$3 AND purpose='bind' FOR UPDATE",
+          [input.challengeId, campaignId, sessionHash],
+        )
+      ).rows[0];
+      if (!challenge || challenge.used || challenge.expires <= Date.now())
+        fail(409, "Signing request expired or consumed.");
+      const binding = JSON.parse(challenge.message);
+      if (
+        binding.origin !== this.origin ||
+        binding.network !== this.network ||
+        binding.domain !== "NimClaim/organiser/bind/v1" ||
+        binding.details.campaign !== campaignId ||
+        binding.details.amountLuna !== campaign.amount
+      )
+        fail(409, "Signing request binding mismatch.");
+      const address = verifyOwner(
+        challenge.message,
+        input.publicKey,
+        input.signature,
+      );
+      if (!address) fail(401, "Wallet signature is invalid.");
+      await c.query("INSERT INTO campaign_wallets VALUES ($1,$2,$3,$4,$5,$6)", [
+        campaignId,
+        address,
+        input.publicKey,
+        input.signature,
+        challenge.id,
+        Date.now(),
+      ]);
+      await c.query(
+        "UPDATE organiser_challenges SET used=1 WHERE id=$1 AND used=0",
+        [challenge.id],
+      );
+      return { address };
+    });
+  }
   async read(sql: string, args: unknown[] = []) {
     return transaction(this.pool, async (c) => (await c.query(sql, args)).rows);
   }
@@ -100,7 +202,7 @@ export class PostgresStore {
         domain: "NimClaim/claim/v1",
         purpose: "Request a contributor reward; no payment or transaction",
         origin: this.origin,
-        network: "testnet",
+        network: this.network,
         campaign: inv.campaign_id,
         invitation: inv.id,
         tokenHash: digest(token),
@@ -112,7 +214,7 @@ export class PostgresStore {
         "INSERT INTO challenges(id,invitation_id,message,expires) VALUES ($1,$2,$3,$4)",
         [id, inv.id, message, expires],
       );
-      return { id, message, expires, network: "testnet" };
+      return { id, message, expires, network: this.network };
     });
   }
   async claim(input: {
@@ -137,7 +239,7 @@ export class PostgresStore {
           "Signing request is expired or already used. Request a new one.",
         );
       const binding = JSON.parse(challenge.message);
-      if (binding.origin !== this.origin || binding.network !== "testnet")
+      if (binding.origin !== this.origin || binding.network !== this.network)
         fail(
           409,
           "Signing request belongs to a different origin or network. Request a new one.",
@@ -217,7 +319,8 @@ export class PostgresStore {
       address: claim.address,
       status: claim.status,
       created: claim.created,
-      payment: await this.paymentView(claim.id),
+      payment:
+        this.network === "mainnet" ? null : await this.paymentView(claim.id),
       history: await this.read(
         "SELECT status,at FROM events WHERE claim_id=$1 ORDER BY id",
         [claim.id],

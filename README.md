@@ -2,7 +2,7 @@
 
 A Nimiq Pay Mini App for community organisers to invite contributors, verify wallet ownership, review reward claims and prepare approved rewards for payment. Built as an independent first vertical slice for the Nimiq Mini Apps Competition Cycle III, Pay category.
 
-**Native Nimiq Pay HTLC payouts are implemented; spending remains disabled by default and mainnet is blocked.** The local organiser wallet signs authorisation; the independently checked remote HTLC funds the reward. Physical testnet validation is still pending. `payment-ready` means approved and unpaid; only independently verified, finalized successful execution produces a paid receipt. Campaign amounts are commitments, not escrowed funds. No chain receipts, payments, AI features or populated demo campaigns are fabricated. Nimiq native chain data is public.
+**A separate MAINNET claims deployment is prepared. Mainnet spending and payment verification remain blocked.** The SQLite path implements gated TESTNET HTLC payouts; spending stays disabled by default. The local organiser wallet signs authorisation; the independently checked remote HTLC funds the reward. Physical testnet validation is still pending. `payment-ready` means approved and unpaid; only independently verified, finalized successful execution produces a paid receipt. Campaign amounts are commitments, not escrowed funds. No chain receipts, payments, AI features or populated demo campaigns are fabricated. Nimiq native chain data is public.
 
 ## Run locally
 
@@ -69,7 +69,11 @@ SQLite uses WAL, foreign keys, unique constraints and `BEGIN IMMEDIATE` transact
 
 One installation supports **one organiser**, authenticated server-side. There is no open registration, multi-tenancy, password reset UI, invitation replacement or campaign editing in this slice. A rejected/expired invitation is not reissued; create another campaign if needed. Protect organiser access and save invitation links before closing the page. Lost links cannot be recovered. Invitation possession is bearer access: a leaked link can be claimed first by another wallet and lets its holder view the resulting claim/address. Signature verification proves control of a key, not contributor eligibility or one human per wallet; organiser review is necessary.
 
-See [payout architecture and limits](docs/PAYMENTS.md), [mainnet NO-GO checklist](docs/MAINNET-READINESS.md), [security and API details](docs/SECURITY.md), [verification results and remaining work](docs/REPORT.md), and [HTTPS device test steps](docs/NIMIQ-PAY-TEST.md).
+See [payout architecture and limits](docs/PAYMENTS.md), [mainnet spending blockers](docs/MAINNET-READINESS.md), [security and API details](docs/SECURITY.md), [verification results and remaining work](docs/REPORT.md), and [HTTPS device test steps](docs/NIMIQ-PAY-TEST.md).
+
+## PostgreSQL MAINNET deployment
+
+Use [the separate production Blueprint](render.production.yaml) and [the MAINNET deployment and device acceptance guide](docs/RENDER-MAINNET.md). `npm run start:mainnet` requires an exact HTTPS origin, fresh Neon PostgreSQL 17 database and restricted runtime credentials, verified before listening. The production path starts empty, verifies organiser and recipient signatures, and persists campaign review. It has no payout or hash submission API. Approval is unpaid. A real, no-spend Nimiq Pay test on supported devices is required before sharing the production URL.
 
 ## PostgreSQL staging path
 

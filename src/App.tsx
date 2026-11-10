@@ -18,7 +18,12 @@ import {
   watchWalletAccounts,
 } from "./wallet";
 
-type Config = { network: string; origin: string; staging?: boolean };
+type Config = {
+  network: string;
+  origin: string;
+  staging?: boolean;
+  claimsOnly?: boolean;
+};
 function reviewLabel(status: string, staging?: boolean) {
   return staging && status === "payment-ready"
     ? "Approved for testing"
@@ -72,16 +77,28 @@ export default function App() {
           </span>
           NimClaim
         </a>
-        <span className="network">{config?.network ?? "Connecting…"}</span>
+        <span className="network">
+          {config?.network.toUpperCase() ?? "Connecting…"}
+        </span>
       </header>
       <main>
+        {config?.claimsOnly && (
+          <p className="notice" role="status">
+            MAINNET · Real wallet signatures and reward claims. Payments are
+            unavailable; approval does not transfer NIM.
+          </p>
+        )}
         <Notice text={error} />
         {config &&
           (hash === "#diagnostics" ? (
-            config.staging ? (
+            config.staging || config.claimsOnly ? (
               <section className="panel">
                 <h1>Page unavailable</h1>
-                <p>Open your private invitation for TESTNET claim testing.</p>
+                <p>
+                  {config.staging
+                    ? "Open your private invitation for TESTNET claim testing."
+                    : "Open your private invitation to submit a signed claim."}
+                </p>
               </section>
             ) : (
               <>
@@ -101,12 +118,17 @@ export default function App() {
               </section>
             )
           ) : (
-            <Organiser staging={config.staging} />
+            <Organiser
+              staging={config.staging}
+              claimsOnly={config.claimsOnly}
+            />
           ))}
       </main>
       <footer>
         {config?.staging ? (
           "TESTNET claim testing only. Native NIM spending is disabled."
+        ) : config?.claimsOnly ? (
+          "MAINNET claims only. NimClaim does not send or verify payments."
         ) : (
           <>
             Native NIM rewards.{" "}
@@ -119,7 +141,13 @@ export default function App() {
     </>
   );
 }
-function Organiser({ staging }: { staging?: boolean }) {
+function Organiser({
+  staging,
+  claimsOnly,
+}: {
+  staging?: boolean;
+  claimsOnly?: boolean;
+}) {
   const [authenticated, setAuthenticated] = useState<boolean>();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selected, setSelected] = useState<string>();
@@ -181,7 +209,9 @@ function Organiser({ staging }: { staging?: boolean }) {
         <p className="muted">
           {staging
             ? "Use your separate staging organiser credentials."
-            : "First visit? Run the local setup command in the README to create your organiser credentials."}
+            : claimsOnly
+              ? "Use your production organiser credentials."
+              : "First visit? Run the local setup command in the README to create your organiser credentials."}
         </p>
         <p>
           {staging
@@ -416,6 +446,7 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
     wallet: { address: string } | null;
     paymentGate: PaymentGate;
     staging?: boolean;
+    claimsOnly?: boolean;
     invitations: { id: string; created: number }[];
     claims: Claim[];
   }>();
@@ -517,6 +548,7 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
           campaignId={id}
           wallet={data.wallet}
           gate={data.paymentGate}
+          claimsOnly={data.claimsOnly}
           reload={load}
         />
       )}
@@ -611,7 +643,9 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
                   disabled={busy || expired}
                   onClick={() => decide(claim, "payment-ready")}
                 >
-                  {data.staging ? "Approve claim" : "Approve for payment"}
+                  {data.staging || data.claimsOnly
+                    ? "Approve claim"
+                    : "Approve for payment"}
                 </button>
                 <button
                   className="secondary"
@@ -626,6 +660,11 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
               <p className="muted">
                 {data.staging ? (
                   "Approved for testing — no payment will be made"
+                ) : data.claimsOnly ? (
+                  <>
+                    Approved for {nim(c.amount)} NIM. NimClaim cannot send or
+                    verify payment.
+                  </>
                 ) : (
                   <>
                     Approved for {nim(c.amount)} NIM. Approval alone does not
@@ -634,9 +673,9 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
                 )}
               </p>
             )}
-            {claim.status === "payment-ready" && !data.staging && (
-              <Payout claim={claim} reload={load} />
-            )}
+            {claim.status === "payment-ready" &&
+              !data.staging &&
+              !data.claimsOnly && <Payout claim={claim} reload={load} />}
           </section>
         ))
       )}
@@ -792,10 +831,12 @@ function Recipient({ token, config }: { token: string; config: Config }) {
           Expires {date(c.expires)} · {config.network}
         </p>
       </section>
-      <details>
-        <summary>Read-only wallet diagnostics</summary>
-        <WalletDiagnostics expectedNetwork={config.network} />
-      </details>
+      {!config.claimsOnly && (
+        <details>
+          <summary>Read-only wallet diagnostics</summary>
+          <WalletDiagnostics expectedNetwork={config.network} />
+        </details>
+      )}
       <Notice text={error} />
       {data.claim ? (
         <section className="panel">
@@ -810,7 +851,9 @@ function Recipient({ token, config }: { token: string; config: Config }) {
                   : data.claim.payment
                     ? "Payment verification is pending."
                     : data.claim.status === "payment-ready"
-                      ? "Approved. Awaiting payment."
+                      ? config.claimsOnly
+                        ? "Approved · unpaid"
+                        : "Approved. Awaiting payment."
                       : data.claim.status === "pending"
                         ? "Your request is with the organiser."
                         : "Your claim is closed."}

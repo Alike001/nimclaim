@@ -24,7 +24,11 @@ export function stagingRoute(method: string, path: string) {
     /^\/api\/claims\/[a-f0-9-]{36}\/decision$/.test(path)
   );
 }
-export function stagingGateway(backendPort: number, origin: string) {
+export function stagingGateway(
+  backendPort: number,
+  origin: string,
+  route = stagingRoute,
+) {
   const gateway = createServer((req, res) => {
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Strict-Transport-Security", "max-age=31536000");
@@ -36,7 +40,7 @@ export function stagingGateway(backendPort: number, origin: string) {
     // No decoding, URL normalization, alternate hosts or forwarded-header trust.
     if (
       req.headers.host !== new URL(origin).host ||
-      !stagingRoute(req.method ?? "", req.url ?? "")
+      !route(req.method ?? "", req.url ?? "")
     )
       return deny();
     const headers = { ...req.headers };

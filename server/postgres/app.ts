@@ -27,6 +27,16 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
     !store.origin.startsWith("https://")
   )
     throw new Error("Postgres staging requires an exact HTTPS origin");
+  const mainnet = store.network === "mainnet";
+  const gate = mainnet
+    ? {
+        ...disabledGate,
+        reasons: [
+          "MAINNET spending and payment verification are unavailable. Approved claims remain unpaid.",
+        ],
+      }
+    : disabledGate;
+  const sessionName = mainnet ? "nimclaim_mainnet_session" : "nimclaim_session";
   const server = createServer(async (req, res) => {
     securityHeaders(res, store.origin);
     const send = (status: number, body: unknown) => {
@@ -43,9 +53,14 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
       if (
         /^\/api\/payments(?:\/|$)/.test(path) ||
         /^\/api\/claims\/[^/]+\/payment(?:\/|$)/.test(path) ||
-        /^\/api\/campaigns\/[^/]+\/wallet(?:\/|$)/.test(path)
+        (!mainnet && /^\/api\/campaigns\/[^/]+\/wallet(?:\/|$)/.test(path))
       )
-        fail(403, "Payments are unavailable in staging.");
+        fail(
+          403,
+          mainnet
+            ? "MAINNET payments are unavailable; claims remain unpaid."
+            : "Payments are unavailable in staging.",
+        );
       await store.rate(path === "/api/login");
       let body: any;
       if (req.method === "POST") {
@@ -57,15 +72,16 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
       }
       if (path === "/api/config" && req.method === "GET")
         return send(200, {
-          network: "testnet",
+          network: store.network,
           origin: store.origin,
-          staging: true,
+          staging: !mainnet,
+          ...(mainnet ? { claimsOnly: true } : {}),
           mobileTest: false,
         });
       await store.expire();
-      const session = /(?:^|;\s*)nimclaim_session=([a-f0-9]{64})(?:;|$)/.exec(
-        req.headers.cookie ?? "",
-      )?.[1];
+      const session = new RegExp(
+        `(?:^|;\\s*)${sessionName}=([a-f0-9]{64})(?:;|$)`,
+      ).exec(req.headers.cookie ?? "")?.[1];
       const authorised =
         !!session &&
         (
@@ -77,7 +93,7 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
       if (path === "/api/session" && req.method === "GET")
         return send(200, { authenticated: authorised });
       const cookie = (value: string, age: number) =>
-        `nimclaim_session=${value}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=${age}; Secure`;
+        `${sessionName}=${value}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=${age}; Secure`;
       if (path === "/api/login" && req.method === "POST") {
         const { password } = z
           .object({ password: z.string().min(1).max(256) })
@@ -144,6 +160,32 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
         return send(201, { claim: await store.claim(input) });
       }
       if (!authorised) fail(401, "Sign in as organiser to continue.");
+      const walletRoute =
+        /^\/api\/campaigns\/([a-f0-9-]{36})\/wallet(\/challenge)?$/.exec(path);
+      if (mainnet && walletRoute && req.method === "POST") {
+        if (walletRoute[2]) {
+          z.object({}).strict().parse(body);
+          return send(
+            201,
+            await store.walletChallenge(walletRoute[1], digest(session!)),
+          );
+        }
+        const proof = z
+          .object({
+            challengeId: z.string().uuid(),
+            publicKey: z.string().regex(/^[a-f0-9]{64}$/i),
+            signature: z.string().regex(/^[a-f0-9]{128}$/i),
+          })
+          .strict()
+          .parse(body);
+        return send(201, {
+          wallet: await store.bindWallet(
+            walletRoute[1],
+            digest(session!),
+            proof,
+          ),
+        });
+      }
       if (path === "/api/campaigns" && req.method === "GET")
         return send(200, {
           campaigns: await store.read(
@@ -189,7 +231,8 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
           claims.push(await store.claimView(claim));
         return send(200, {
           campaign,
-          staging: true,
+          staging: !mainnet,
+          ...(mainnet ? { claimsOnly: true } : {}),
           wallet:
             (
               await store.read(
@@ -197,7 +240,7 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
                 [detail[1]],
               )
             )[0] ?? null,
-          paymentGate: disabledGate,
+          paymentGate: gate,
           invitations: await store.read(
             "SELECT id,created FROM invitations WHERE campaign_id=$1 ORDER BY created",
             [detail[1]],
