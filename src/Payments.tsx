@@ -111,6 +111,7 @@ export function CampaignWallet({
         connected.provider,
         challenge.message,
         config.network,
+        connected.walletAddress,
       );
       await api(`/campaigns/${campaignId}/wallet`, {
         challengeId: challenge.id,
@@ -220,6 +221,7 @@ export function Payout({
         connected.provider,
         challenge.message,
         review.network,
+        accounts.organiser,
       );
       await submitNativePayment(
         connected.provider,

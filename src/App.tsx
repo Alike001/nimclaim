@@ -11,7 +11,12 @@ import {
   type Campaign,
   type Claim,
 } from "./api";
-import { connectWallet, signChallenge, walletError } from "./wallet";
+import {
+  connectWallet,
+  signChallenge,
+  walletError,
+  watchWalletAccounts,
+} from "./wallet";
 
 type Config = { network: string; origin: string; staging?: boolean };
 function reviewLabel(status: string, staging?: boolean) {
@@ -668,11 +673,45 @@ function Recipient({ token, config }: { token: string; config: Config }) {
     }, 15000);
     return () => clearInterval(timer);
   }, [load]);
+
+  useEffect(() => {
+    if (!wallet) return;
+
+    const provider = wallet.provider;
+    const connectedWalletAddress = wallet.walletAddress;
+
+    return watchWalletAccounts(provider, (next) => {
+      if (!next) {
+        setWallet(undefined);
+        setChallenge(undefined);
+        setError(
+          "Nimiq Pay no longer exposes an approved wallet. Reconnect before claiming.",
+        );
+        return;
+      }
+
+      setWallet((current) =>
+        current?.provider === provider ? { ...current, ...next } : current,
+      );
+
+      // HTLC rotation is normal. Only a primary wallet change invalidates
+      // the signing request.
+      if (next.walletAddress !== connectedWalletAddress) {
+        setChallenge(undefined);
+        setError(
+          "The Nimiq Pay wallet address changed. Reconnect before claiming.",
+        );
+      }
+    });
+  }, [wallet?.provider, wallet?.walletAddress]);
+
   async function connect() {
     setBusy(true);
     setError("");
     try {
-      setWallet(await connectWallet(config.network));
+      setChallenge(undefined);
+      const connected = await connectWallet(config.network);
+      setWallet(connected);
       setChallenge(await api("/challenge", { token }));
     } catch (e) {
       setError(walletError(e));
@@ -689,6 +728,7 @@ function Recipient({ token, config }: { token: string; config: Config }) {
         wallet.provider,
         challenge.message,
         config.network,
+        wallet.walletAddress,
       );
       await api("/claim", {
         token,

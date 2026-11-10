@@ -213,7 +213,18 @@ test("claim signing verifies host network and server challenge network/origin be
   globalThis.window = { nimiqPay: { network: "testnet" } } as typeof window;
   globalThis.location = { origin: "https://private.example" } as Location;
   let calls = 0;
+  const accountListeners = new Set<(accounts: string[]) => void>();
   const provider = {
+    disconnect() {},
+    listAccounts: async () => ["synthetic"],
+    on(event: string, listener: (accounts: string[]) => void) {
+      if (event === "accountsChanged") accountListeners.add(listener);
+      return this;
+    },
+    removeListener(event: string, listener: (accounts: string[]) => void) {
+      if (event === "accountsChanged") accountListeners.delete(listener);
+      return this;
+    },
     sign: async () => {
       calls++;
       return { publicKey: "synthetic", signature: "synthetic" };
@@ -224,12 +235,15 @@ test("claim signing verifies host network and server challenge network/origin be
     JSON.stringify({ network: "testnet", origin: "https://other.example" }),
     "invalid",
   ])
-    await assert.rejects(signChallenge(provider, message, "testnet"));
+    await assert.rejects(
+      signChallenge(provider, message, "testnet", "synthetic"),
+    );
   assert.equal(calls, 0);
   await signChallenge(
     provider,
     JSON.stringify({ network: "testnet", origin: location.origin }),
     "testnet",
+    "synthetic",
   );
   assert.equal(calls, 1);
   window.nimiqPay = { network: "mainnet" } as typeof window.nimiqPay;
@@ -238,6 +252,7 @@ test("claim signing verifies host network and server challenge network/origin be
       provider,
       JSON.stringify({ network: "testnet", origin: location.origin }),
       "testnet",
+      "synthetic",
     ),
   );
   assert.equal(calls, 1);

@@ -84,8 +84,22 @@ async function injectWallet(
     ({ mode, account }) => {
       const win = window as any;
       win.nimiqPay = { network: mode === "network" ? "mainnet" : "testnet" };
+      const accountListeners = new Set<(accounts: string[]) => void>();
+
       win.nimiq = {
         disconnect() {},
+        on(event: string, listener: (accounts: string[]) => void) {
+          if (event === "accountsChanged") {
+            accountListeners.add(listener);
+          }
+          return this;
+        },
+        removeListener(event: string, listener: (accounts: string[]) => void) {
+          if (event === "accountsChanged") {
+            accountListeners.delete(listener);
+          }
+          return this;
+        },
         async listAccounts() {
           if (mode === "rejected") throw { code: 4001, message: "Rejected" };
           if (mode === "legacy")
