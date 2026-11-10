@@ -142,11 +142,10 @@ test("setup CLI and production process: Secure authentication, static build and 
       ).status,
       200,
     );
-    const payChallenge = await (
-      await call(`/claims/${claim.id}/payment/challenge`, {})
-    ).json();
-    // Synthetic internal sender assurance only. The production process must still deny all dispatches.
+    // Test-only service uses synthetic read-only RPC; the runtime remains disabled.
     const testDb = openDb(env.DATABASE_PATH);
+    const rpc = new FixtureRpc();
+    rpc.owner = organiserSigner;
     const service = new Payments(testDb, {
       origin: env.APP_ORIGIN,
       network: "testnet",
@@ -154,9 +153,13 @@ test("setup CLI and production process: Secure authentication, static build and 
       enabled: true,
       spendingNetwork: "testnet",
       maxLuna: 1_000_000,
-      rpc: new FixtureRpc(),
-      verifySelectedSender: async () => organiserSigner.address,
+      rpc,
     });
+    const payChallenge = await service.paymentChallenge(
+      claim.id,
+      digest(cookie.split("=")[1]),
+      rpc.htlc,
+    );
     const reservation = await service.reserve(
       claim.id,
       digest(cookie.split("=")[1]),
@@ -186,9 +189,12 @@ test("setup CLI and production process: Secure authentication, static build and 
       ).status,
       409,
     );
-    assert.equal(
-      (await (await call("/config")).json()).payments.senderBindingSupported,
-      false,
+    const gate = (await (await call("/config")).json()).payments;
+    assert.equal(gate.senderBindingSupported, false);
+    assert.equal(gate.htlcVerificationSupported, true);
+    assert.equal(gate.enabled, false);
+    assert.ok(
+      gate.reasons.includes("Spending is disabled by server configuration."),
     );
     assert.equal((await call("/claim", proof)).status, 409);
   } finally {

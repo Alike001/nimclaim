@@ -2,7 +2,7 @@
 
 A Nimiq Pay Mini App for community organisers to invite contributors, verify wallet ownership, review reward claims and prepare approved rewards for payment. Built as an independent first vertical slice for the Nimiq Mini Apps Competition Cycle III, Pay category.
 
-**Native payout code is implemented, but real spending is blocked.** The current official SDK cannot bind the wallet-selected sender before broadcast, so production cannot issue a dispatch permit. `payment-ready` means approved and unpaid; only independently verified, finalized successful execution produces a paid receipt. Campaign amounts are commitments, not escrowed funds. No chain receipts, payments, AI features or populated demo campaigns are fabricated. Nimiq native chain data is public.
+**Native Nimiq Pay HTLC payouts are implemented; spending remains disabled by default and mainnet is blocked.** The local organiser wallet signs authorisation; the independently checked remote HTLC funds the reward. Physical testnet validation is still pending. `payment-ready` means approved and unpaid; only independently verified, finalized successful execution produces a paid receipt. Campaign amounts are commitments, not escrowed funds. No chain receipts, payments, AI features or populated demo campaigns are fabricated. Nimiq native chain data is public.
 
 ## Run locally
 
@@ -24,7 +24,7 @@ Save the generated organiser password in a password manager; it is displayed onc
 2. Create and save each invitation before leaving the screen. Each invitation consumes one fixed campaign slot. Its plaintext token cannot be retrieved from the database.
 3. Send each invitation directly to its intended contributor. Invitation links use URL fragments so tokens stay out of normal HTTP URL/access logs. They are sent in JSON bodies to the API; do not enable request-body logging.
 4. Recipients open their invitation in Nimiq Pay, approve account access, review a signing request, then sign and submit it.
-5. Refresh the campaign to review pending claims. Approve for payment or reject. Authorize an immutable campaign signing wallet and review the native payment details. The current SDK sender-assurance gate blocks dispatch. Recipients can reopen their link to see actual status and history.
+5. Refresh the campaign to review pending claims. Approve for payment or reject. Authorize an immutable campaign signing wallet and review the native payment details. Payouts require a trusted, funded and unexpired Nimiq Pay HTLC; server spending gates remain in force. Recipients can reopen their link to see actual status and history.
 
 Ordinary browsers can manage campaigns and view invitations but display an honest wallet-unavailable message when asked to connect. No wallet is injected by the application. The test-only wallet doubles live under `tests/`.
 
@@ -87,7 +87,7 @@ General production still needs per-client durable abuse controls, credential rec
 
 ## Sources and independence
 
-Wallet integration follows the official [Mini Apps overview](https://nimiq.dev/mini-apps), [provider reference](https://nimiq.dev/mini-apps/api-reference/nimiq-provider), [signed-message verification convention](https://nimiq.dev/hub/guide/transactions), and [local device testing guide](https://nimiq.dev/mini-apps/development/load-local-mini-app). Installed SDK: **@nimiq/mini-app-sdk 0.2.5**, latest npm release checked during implementation, pinned by package-lock.json. Cryptography: **@nimiq/core 2.23.0**. Current documentation was rechecked for payouts; installed SDK typings were inspected without changing dependencies. No wallet sender-selection assumption is made from `listAccounts()`.
+Wallet integration follows the official [Mini Apps overview](https://nimiq.dev/mini-apps), [provider reference](https://nimiq.dev/mini-apps/api-reference/nimiq-provider), [signed-message verification convention](https://nimiq.dev/hub/guide/transactions), and [local device testing guide](https://nimiq.dev/mini-apps/development/load-local-mini-app). Installed SDK: **@nimiq/mini-app-sdk 0.2.5**, latest npm release checked during implementation, pinned by package-lock.json. Cryptography: **@nimiq/core 2.23.0**. Current documentation was rechecked for payouts; installed SDK typings were inspected without changing dependencies. The payout adapter uses the reviewed native host’s local-wallet/remote-HTLC account roles, with explicit provider-cache clearing before critical account reads, signed ownership and independent HTLC RPC checks; the generic SDK contract does not guarantee account freshness.
 
 Cachet is workflow inspiration only (campaign → invitation → review); its design, branding, code and Zcash privacy claims are not used. NimClaim is implemented only in this directory, without files from Nimlane or any other project.
 
@@ -107,7 +107,11 @@ These optional test overrides coordinate Playwright, its isolated API and Vite's
 
 ## Native payout gate
 
-The official `sendBasicTransaction({recipient,value,fee,validityStartHeight})` adapter is present. Authenticated organisers review exact NIM/Luna values and sign a one-time authorization; the backend would reserve immutable intent and consume a one-time dispatch permit before the wallet request. Current production deliberately lacks a trusted selected-sender commitment because the SDK does not provide one. No frontend toggle or environment flag bypasses it. A signing address is not proof of the payment sender.
+Only the separate SQLite runtime (`npm start` → `server/index.ts`) implements the TESTNET payout flow; it remains spending-disabled and subject to host-cache/device release blockers. The Render + Neon PostgreSQL path (`npm run start:staging`) is financially disabled and cannot be enabled for payouts through flags. See [runtime paths and capability-field meanings](docs/PAYMENTS.md#runtime-and-deployment-paths) and the current [mainnet NO-GO](docs/MAINNET-READINESS.md).
+
+The existing adapter calls `sendBasicTransaction({recipient,value,fee})`. The organiser signs a session-bound challenge covering the exact HTLC, local organiser, cosigner, contributor, amount, fee, network and claim. The backend independently checks HTLC ownership, trusted network-specific cosigner, timeout and sufficient balance at challenge and reservation. It stores the HTLC as the immutable transaction sender and retains one-time reservation/dispatch semantics. Both wallet accounts are checked again immediately before requesting the native transaction.
+
+Nimiq Pay chooses its own validity height. The stored reservation height is a minimum inclusion block. Reconciliation requires HTLC-to-Basic early resolve, matching proof identities and exact payment fields, canonical inclusion, execution and following-macro finality. Account lists and browser hashes cannot prove a payment. See [the protocol and verification limitations](docs/PAYMENTS.md), including native account caching and the lack of an atomic sender commitment through the confirmation prompt.
 
 Payment states are approved `payment-ready` (equivalent to PAYMENT_READY), SUBMITTING, UNKNOWN, CONFIRMED and FAILED. Only CONFIRMED with backend-verified successful execution is shown as paid. Hashes are hints, not receipts. Cancellation, timeout, lost responses and missing finality remain UNKNOWN. Each claim has at most one durable attempt in this version, including after failure; there is no reset/retry endpoint. Reconcile the existing attempt instead of sending another payment.
 
@@ -115,7 +119,7 @@ Safe server configuration is documented in `.env.example`: spending is off, no s
 
 For physical testing, use the private-LAN HTTPS procedure and Caddy example linked above. No public development tunnel is needed or permitted by that procedure. The private Caddy endpoint was started and verified locally; Android certificate trust and physical Nimiq Pay validation remain pending. Local certificates and keys are excluded from this repository. **Mainnet readiness remains NO-GO.**
 
-The follow-up [payer-authorized settlement review](docs/PAYER-SELECTED-SETTLEMENT.md) evaluates a possible versioned alternative to strict sender equality, documents what the native confirmation actually contains in pinned host source, and identifies physical testing requirements. The runtime policy is unchanged and mainnet remains NO-GO.
+The follow-up [payer-authorized settlement review](docs/PAYER-SELECTED-SETTLEMENT.md) evaluates a possible versioned alternative to strict sender equality, documents what the native confirmation actually contains in pinned host source, and identifies physical testing requirements. That document is historical context; the implemented organiser-authorised HTLC flow is now described in [PAYMENTS.md](docs/PAYMENTS.md). Mainnet remains NO-GO.
 
 ## Private Android test
 

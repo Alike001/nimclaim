@@ -1,6 +1,6 @@
 # Security and API contract
 
-This is a development vertical slice, not an audited payments service. Native submission is blocked by the missing selected-sender assurance capability. A paid status requires independently verified, finalized successful execution.
+This is a development vertical slice, not an audited payments service. Native payouts require organiser authorisation and independently verified HTLC funding. Spending remains off by default, and mainnet is explicitly blocked. A paid status requires independently verified, finalized successful execution.
 
 ## Boundaries
 
@@ -45,7 +45,7 @@ Errors use `{error:string}`: 400 input, 401 credentials/signature, 403 origin, 4
 
 ## Native payouts (schema v2)
 
-The payout protocol is documented in [PAYMENTS.md](PAYMENTS.md). All wallet binding, payment review, authorization, reservation, dispatch, outcome reporting and reconciliation APIs require the existing server-side organiser session and exact Origin/JSON checks. Recipient invitation access can read its receipt but cannot initiate or reconcile payments. The production sender-assurance adapter is absent: configuration changes cannot bypass this block.
+The payout protocol is documented in [PAYMENTS.md](PAYMENTS.md). All wallet binding, payment review, authorization, reservation, dispatch, outcome reporting and reconciliation APIs require the existing server-side organiser session and exact Origin/JSON checks. Recipient invitation access can read its receipt but cannot initiate or reconcile payments. The local organiser signs; its remote HTLC pays. `senderBindingSupported=false` denotes the absence of an atomic wallet sender guarantee. The separate `htlcVerificationSupported` capability denotes server-side HTLC verification only (SQLite true, PostgreSQL staging false); `enabled` is a configuration gate, not certification of host freshness or release readiness. HTLC type, owner, network-specific trusted cosigner, balance and timeout are independently checked before the challenge and again at reservation. The signed challenge binds both wallet roles and the exact payout. See the payment document for account-cache, native-prompt race and full-node trust limitations.
 
 Additional authenticated POST routes:
 
@@ -54,15 +54,15 @@ Additional authenticated POST routes:
 | `/campaigns/:id/wallet/challenge` | `{}` → session-bound campaign wallet authorization message                                                                              |
 | `/campaigns/:id/wallet`           | `{challengeId,publicKey,signature}` → immutable verified signing wallet                                                                 |
 | `/claims/:id/payment/review`      | `{}` → exact payment details and server gate reasons                                                                                    |
-| `/claims/:id/payment/challenge`   | `{}` → session-bound exact-intent authorization message                                                                                 |
+| `/claims/:id/payment/challenge`   | `{sender}` → independently verify the candidate HTLC and issue a session-bound exact-intent authorization message                       |
 | `/claims/:id/payment/reserve`     | `{challengeId,publicKey,signature}` → immutable intent, durable attempt and one-time permit, only when every backend safety gate passes |
 | `/payments/:id/dispatch`          | `{permit}` → atomically consume one-time broadcast authorization                                                                        |
 | `/payments/:id/outcome`           | `{outcome:"hash"                                                                                                                        | "cancelled" | "error" | "timeout",hash?}` → uncertain outcome; never client-asserted success |
 | `/payments/:id/reconcile`         | `{hash?}` → independently query official RPC and update state, without sending funds                                                    |
 
-Permits are returned once and stored hashed. Immutable intents retain exact approved allocation and recipient. No posted `state`, `sender`, `amount` or `recipient` overrides are accepted. No candidate hash becomes a paid receipt without backend execution/finality checks. Unknown and failed attempts remain locked and cannot be reset through the API. Hash uniqueness is global. Reconciliation cannot downgrade an already terminal outcome in a concurrent request.
+Permits are returned once and stored hashed. Immutable intents retain exact approved allocation and recipient. Reservation accepts no posted `state`, `sender`, `amount` or `recipient` overrides; only the challenge route accepts an independently verified HTLC lookup candidate. No candidate hash becomes a paid receipt without backend execution/finality checks. Unknown and failed attempts remain locked and cannot be reset through the API. Hash uniqueness is global. Reconciliation cannot downgrade an already terminal outcome in a concurrent request.
 
-`SPENDING_ENABLED=false` is the default; HTTPS, explicit matching spending network, positive amount limit, independent RPC and supported selected-sender assurance are all required. RPC credentials are never returned by `/config`. `HttpRpc` rejects all write methods. Preserve the existing database/credentials; do not use a public tunnel for the private mobile-test setup. Native chain data and receipt addresses are public, and server storage contains both organiser and recipient wallet identifiers.
+`SPENDING_ENABLED=false` is the default; HTTPS, explicit matching spending network, positive amount limit, independent RPC and a verified Nimiq Pay HTLC are all required. RPC credentials are never returned by `/config`. `HttpRpc` rejects all write methods. Preserve the existing database/credentials; do not use a public tunnel for the private mobile-test setup. Native chain data and receipt addresses are public, and server storage contains both organiser and recipient wallet identifiers.
 
 ## Isolated Render + Neon Free staging
 

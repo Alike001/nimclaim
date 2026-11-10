@@ -488,6 +488,8 @@ test("two real API processes preserve auth, Origin, signatures, private routes a
   const data = (await x.call(`/api/campaigns/${c.id}`)).body;
   assert.equal(data.staging, true);
   assert.equal(data.paymentGate.enabled, false);
+  assert.equal(data.paymentGate.senderBindingSupported, false);
+  assert.equal(data.paymentGate.htlcVerificationSupported, false);
   assert.equal(JSON.stringify(data).includes(token), false);
 });
 

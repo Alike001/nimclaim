@@ -290,7 +290,8 @@ test("hosted provider receives exact origin-bound challenge and rejects missing/
   const oldWindow = globalThis.window;
   const oldLocation = globalThis.location;
   let signs = 0,
-    accounts = 0;
+    accounts = 0,
+    disconnects = 0;
   const message = JSON.stringify({
     domain: "NimClaim/claim/v1",
     purpose: "Request a contributor reward; no payment or transaction",
@@ -299,10 +300,22 @@ test("hosted provider receives exact origin-bound challenge and rejects missing/
     amountLuna: 12345,
     nonce: "synthetic",
   });
+  const accountListeners = new Set<(accounts: string[]) => void>();
   const provider = {
+    disconnect() {
+      disconnects++;
+    },
     listAccounts: async () => {
       accounts++;
       return ["synthetic"];
+    },
+    on(event: string, listener: (accounts: string[]) => void) {
+      if (event === "accountsChanged") accountListeners.add(listener);
+      return this;
+    },
+    removeListener(event: string, listener: (accounts: string[]) => void) {
+      if (event === "accountsChanged") accountListeners.delete(listener);
+      return this;
     },
     isConsensusEstablished: async () => true,
     getBlockNumber: async () => 123,
@@ -320,16 +333,28 @@ test("hosted provider receives exact origin-bound challenge and rejects missing/
     } as unknown as Window & typeof globalThis;
     const connected = await connectWallet("testnet");
     assert.equal(connected.network, "testnet");
-    await signChallenge(connected.provider, message, "testnet");
+    await signChallenge(
+      connected.provider,
+      message,
+      "testnet",
+      connected.walletAddress,
+    );
     assert.equal(signs, 1);
     for (const network of [undefined, "mainnet"] as const) {
       window.nimiqPay = { network } as typeof window.nimiqPay;
       await assert.rejects(connectWallet("testnet"));
       await assert.rejects(
-        signChallenge(connected.provider, message, "testnet"),
+        signChallenge(
+          connected.provider,
+          message,
+          "testnet",
+          connected.walletAddress,
+        ),
       );
     }
-    assert.equal(accounts, 1);
+    assert.equal(accounts, 3);
+    assert.equal(disconnects, 3);
+    assert.equal(accountListeners.size, 0);
     assert.equal(signs, 1);
     window.nimiqPay = { network: "testnet" } as typeof window.nimiqPay;
     await assert.rejects(
@@ -337,6 +362,7 @@ test("hosted provider receives exact origin-bound challenge and rejects missing/
         connected.provider,
         message.replace(origin, origin + ".evil.example"),
         "testnet",
+        connected.walletAddress,
       ),
     );
     assert.equal(signs, 1);

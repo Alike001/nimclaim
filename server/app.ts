@@ -386,14 +386,22 @@ export function createApp(config: Config) {
               proofSchema.parse(body),
             ),
           );
+        if (action === "challenge") {
+          const input = z
+            .object({ sender: z.string().min(1).max(100) })
+            .strict()
+            .parse(body);
+          return send(
+            201,
+            await payments.paymentChallenge(
+              claimId,
+              digest(session!),
+              input.sender,
+            ),
+          );
+        }
         z.object({}).strict().parse(body);
-        const review = payments.review(claimId);
-        return send(
-          action === "review" ? 200 : 201,
-          action === "review"
-            ? review
-            : payments.challenge(review.campaignId, digest(session!), claimId),
-        );
+        return send(200, payments.review(claimId));
       }
       const attemptRoute =
         /^\/api\/payments\/([a-f0-9-]{36})\/(dispatch|outcome|reconcile)$/.exec(

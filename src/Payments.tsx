@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { api, date, nim, type Claim } from "./api";
-import { connectWallet, signChallenge, walletError } from "./wallet";
+import {
+  connectWallet,
+  signChallenge,
+  walletError,
+  payoutAccounts,
+  type PayoutAccounts,
+} from "./wallet";
 import { submitNativePayment } from "./payout-wallet";
 import type {
   PaymentGate,
@@ -105,6 +111,7 @@ export function CampaignWallet({
         connected.provider,
         challenge.message,
         config.network,
+        connected.walletAddress,
       );
       await api(`/campaigns/${campaignId}/wallet`, {
         challengeId: challenge.id,
@@ -162,6 +169,7 @@ export function Payout({
     [challenge, setChallenge] = useState<{ id: string; message: string }>(),
     [connected, setConnected] =
       useState<Awaited<ReturnType<typeof connectWallet>>>();
+  const [accounts, setAccounts] = useState<PayoutAccounts>();
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [hash, setHash] = useState("");
@@ -180,10 +188,23 @@ export function Payout({
     if (!review) return;
     setBusy(true);
     setError("");
+    setChallenge(undefined);
+    setAccounts(undefined);
+    setConnected(undefined);
     try {
       const wallet = await connectWallet(review.network);
+      const selected = await payoutAccounts(wallet.provider);
+      if (selected.organiser !== review.sender)
+        throw new Error(
+          "Local wallet does not match the authorised organiser.",
+        );
+      setAccounts(selected);
       setConnected(wallet);
-      setChallenge(await api(`/claims/${claim.id}/payment/challenge`, {}));
+      setChallenge(
+        await api(`/claims/${claim.id}/payment/challenge`, {
+          sender: selected.htlc,
+        }),
+      );
     } catch (e) {
       setError(walletError(e));
     } finally {
@@ -191,20 +212,28 @@ export function Payout({
     }
   }
   async function pay() {
-    if (!review || !challenge || !connected) return;
+    if (!review || !challenge || !connected || !accounts) return;
     setBusy(true);
     setError("");
     try {
+      await payoutAccounts(connected.provider, accounts);
       const signed = await signChallenge(
         connected.provider,
         challenge.message,
         review.network,
+        accounts.organiser,
       );
-      await submitNativePayment(connected.provider, claim.id, review.network, {
-        challengeId: challenge.id,
-        publicKey: signed.publicKey,
-        signature: signed.signature,
-      });
+      await submitNativePayment(
+        connected.provider,
+        claim.id,
+        review.network,
+        accounts,
+        {
+          challengeId: challenge.id,
+          publicKey: signed.publicKey,
+          signature: signed.signature,
+        },
+      );
     } catch (e) {
       setError(walletError(e));
     } finally {
@@ -263,13 +292,14 @@ export function Payout({
         <section aria-label="Payment review" className="payment-review">
           <h3>Review native NIM payment</h3>
           <dl className="payment-facts">
-            <dt>Authorized sender</dt>
+            <dt>Authorising organiser</dt>
             <dd>{review.sender}</dd>
-            <dt>Wallet-selected sender</dt>
+            <dt>HTLC transaction sender</dt>
             <dd>
-              {review.gate.senderBindingSupported
-                ? "Must be verified by the server before dispatch"
-                : "Unverifiable with the current SDK — payment blocked"}
+              {review.gate.htlcVerificationSupported
+                ? (accounts?.htlc ??
+                  "Verified independently before reservation")
+                : "Payment blocked"}
             </dd>
             <dt>Recipient</dt>
             <dd>{review.recipient}</dd>

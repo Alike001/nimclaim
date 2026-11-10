@@ -9,8 +9,8 @@ import { digest, passwordHash } from "../server/crypto.js";
 import { testSigner } from "./helpers.js";
 import { paymentHarness, HASH } from "./payment-helpers.js";
 
-test("production has no selected-sender adapter; server configuration and frontend fields cannot bypass it", async (t) => {
-  const h = await paymentHarness({ verifySelectedSender: undefined });
+test("disabled server spending and frontend fields cannot bypass the gate", async (t) => {
+  const h = await paymentHarness({ enabled: false });
   t.after(() => h.close());
   const c = await h.campaign(),
     proof = await h.proof(`/claims/${c.claimId}/payment/challenge`);
@@ -21,6 +21,7 @@ test("production has no selected-sender adapter; server configuration and fronte
   const gate = (await h.call("/config")).body.payments;
   assert.equal(gate.enabled, false);
   assert.equal(gate.senderBindingSupported, false);
+  assert.equal(gate.htlcVerificationSupported, true);
   assert.equal(
     (
       await h.call(`/claims/${c.claimId}/payment/reserve`, {
@@ -91,7 +92,7 @@ test("organiser endpoints require auth; binding is signed, immutable, nonce- and
   assert.equal(oldProof.status, 409);
 });
 
-test("wrong signing wallet and independently different selected sender block before reservation", async (t) => {
+test("wrong signing wallet and independently different HTLC owner block before reservation", async (t) => {
   const h = await paymentHarness();
   t.after(() => h.close());
   const c = await h.campaign();
@@ -103,12 +104,18 @@ test("wrong signing wallet and independently different selected sender block bef
     (await h.call(`/claims/${c.claimId}/payment/reserve`, proof)).status,
     403,
   );
-  const wrong = await paymentHarness({
-    verifySelectedSender: async () => testSigner().address,
-  });
+  const wrong = await paymentHarness();
   t.after(() => wrong.close());
   const d = await wrong.campaign();
-  assert.equal((await wrong.reserve(d.claimId)).status, 403);
+  const wrongProof = await wrong.proof(
+    `/claims/${d.claimId}/payment/challenge`,
+  );
+  wrong.rpc.account.sender = testSigner().address;
+  assert.equal(
+    (await wrong.call(`/claims/${d.claimId}/payment/reserve`, wrongProof))
+      .status,
+    409,
+  );
   assert.equal(
     (wrong.db.prepare("SELECT COUNT(*) AS n FROM payment_intents").get() as any)
       .n,
@@ -236,7 +243,7 @@ test("hash hint cannot declare PAID; independent canonical execution and macro f
   const verified = await h.call(`/payments/${r.body.id}/reconcile`, {});
   assert.equal(verified.status, 200);
   assert.equal(verified.body.state, "CONFIRMED");
-  assert.equal(verified.body.receipt.sender, h.sender.address);
+  assert.equal(verified.body.receipt.sender, h.rpc.htlc);
   assert.equal(verified.body.receipt.recipient, h.recipient.address);
   assert.equal(verified.body.receipt.amount, 1234567);
   assert.equal(verified.body.receipt.fee, 1000);
@@ -285,7 +292,9 @@ for (const altered of [
         ? "d".repeat(64)
         : altered === "networkId"
           ? 24
-          : 1;
+          : altered === "validityStartHeight"
+            ? 102
+            : 1;
     const result = await h.call(`/payments/${r.body.id}/reconcile`, {
       hash: HASH,
     });
@@ -570,5 +579,205 @@ test("independent API instances racing on the same SQLite file reserve at most o
     await new Promise<void>((ok) => second.server.close(() => ok()));
     second.db.close();
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+for (const [label, altered] of [
+  ["wrong owner", { sender: testSigner().address }],
+  ["untrusted cosigner", { recipient: testSigner().address }],
+  ["insufficient reward plus fee", { balance: 1234567 }],
+  ["expired HTLC", { timeout: 1 }],
+  ["Basic account", { type: "basic" }],
+  ["wrong queried address", { address: testSigner().address }],
+] as const) {
+  test(`HTLC ${label} blocks challenge and reservation after a previously valid challenge`, async (t) => {
+    const h = await paymentHarness();
+    t.after(() => h.close());
+    const c = await h.campaign();
+    const proof = await h.proof(`/claims/${c.claimId}/payment/challenge`);
+    h.rpc.account = { ...altered };
+    assert.equal(
+      (
+        await h.call(`/claims/${c.claimId}/payment/challenge`, {
+          sender: h.rpc.htlc,
+        })
+      ).status,
+      409,
+    );
+    assert.equal(
+      (await h.call(`/claims/${c.claimId}/payment/reserve`, proof)).status,
+      409,
+    );
+    assert.equal(
+      (h.db.prepare("SELECT COUNT(*) AS n FROM payment_attempts").get() as any)
+        .n,
+      0,
+    );
+  });
+}
+
+test("valid HTLC challenge binds exact funding, authoriser, cosigner, reward, fee, network and claim", async (t) => {
+  const h = await paymentHarness();
+  t.after(() => h.close());
+  const c = await h.campaign();
+  const result = await h.call(`/claims/${c.claimId}/payment/challenge`, {
+    sender: h.rpc.htlc,
+  });
+  assert.equal(result.status, 201);
+  const binding = JSON.parse(result.body.message);
+  assert.deepEqual(binding.details, {
+    campaignId: c.campaignId,
+    claimId: c.claimId,
+    sender: h.rpc.htlc,
+    recipient: h.recipient.address,
+    amount: 1234567,
+    fee: 1000,
+    network: "testnet",
+    expires: binding.details.expires,
+    organiser: h.sender.address,
+    htlcRecipient: h.rpc.accountData().recipient,
+    htlcTimeout: h.rpc.timeout,
+  });
+  const r = await h.call(`/claims/${c.claimId}/payment/reserve`, {
+    challengeId: result.body.id,
+    publicKey: h.sender.publicKey,
+    signature: h.sender.sign(result.body.message),
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.intent.sender, h.rpc.htlc);
+  assert.notEqual(r.body.intent.sender, h.sender.address);
+});
+
+for (const [label, tx] of [
+  ["Basic sender", { fromType: 0 }],
+  ["HTLC recipient", { toType: 2 }],
+  ["missing early-resolve proof", { proof: undefined }],
+  ["invalid early-resolve proof", { proof: "0100" }],
+  ["timeout-resolve proof", { proof: "02" + "00".repeat(98) }],
+  ["inclusion before reservation", { blockNumber: 99 }],
+  ["validity after inclusion", { validityStartHeight: 102 }],
+] as const) {
+  test(`${label} never confirms an HTLC payment`, async (t) => {
+    const h = await paymentHarness();
+    t.after(() => h.close());
+    const c = await h.campaign(),
+      r = await h.reserve(c.claimId);
+    h.rpc.tx = { ...tx };
+    const result = await h.call(`/payments/${r.body.id}/reconcile`, {
+      hash: HASH,
+    });
+    assert.ok(result.status === 409 || result.body.state === "UNKNOWN");
+    assert.equal(h.payments.view(c.claimId)!.receipt, null);
+  });
+}
+
+for (const height of [99, 100, 101]) {
+  test(`native validity height ${height} is independent of reservation minimum 100`, async (t) => {
+    const h = await paymentHarness();
+    t.after(() => h.close());
+    const c = await h.campaign(),
+      r = await h.reserve(c.claimId);
+    h.rpc.tx.validityStartHeight = height;
+    const result = await h.call(`/payments/${r.body.id}/reconcile`, {
+      hash: HASH,
+    });
+    assert.equal(result.body.state, "CONFIRMED");
+  });
+}
+
+test("mainnet spending is blocked even with every configurable gate satisfied", async (t) => {
+  const h = await paymentHarness();
+  t.after(() => h.close());
+  const service = new Payments(h.db, {
+    ...h.paymentOptions,
+    origin: "https://payout.test",
+    now: Date.now,
+    network: "mainnet",
+    spendingNetwork: "mainnet",
+  });
+  assert.equal(service.gate().enabled, false);
+  assert.ok(
+    service
+      .gate()
+      .reasons.some((reason) => /Mainnet spending is disabled/.test(reason)),
+  );
+});
+
+for (const role of ["organiser", "cosigner"] as const) {
+  test(`early-resolve proof with a different ${role} identity is rejected`, async (t) => {
+    const h = await paymentHarness();
+    t.after(() => h.close());
+    const c = await h.campaign(),
+      r = await h.reserve(c.claimId);
+    const { cosignerPublicKeys } = await import("../server/rpc.js");
+    h.rpc.tx.proof = h.rpc
+      .transaction()
+      .proof.replace(
+        role === "organiser"
+          ? h.sender.publicKey
+          : cosignerPublicKeys.testnet[0],
+        role === "organiser"
+          ? testSigner().publicKey
+          : cosignerPublicKeys.mainnet[0],
+      );
+    assert.equal(
+      (await h.call(`/payments/${r.body.id}/reconcile`, { hash: HASH })).status,
+      409,
+    );
+    assert.equal(h.payments.view(c.claimId)!.receipt, null);
+  });
+}
+
+for (const changed of [
+  "block hash",
+  "missing transaction",
+  "proof",
+  "validity height",
+] as const) {
+  test(`canonical ${changed} changing during finality verification remains UNKNOWN`, async (t) => {
+    const h = await paymentHarness();
+    t.after(() => h.close());
+    const c = await h.campaign(),
+      r = await h.reserve(c.claimId);
+    const call = h.rpc.call.bind(h.rpc);
+    let inclusionReads = 0;
+    h.rpc.call = async (method, params) => {
+      const result = (await call(method, params)) as any;
+      if (
+        method === "getBlockByNumber" &&
+        params[0] === 101 &&
+        ++inclusionReads === 2
+      ) {
+        if (changed === "block hash") result.hash = "d".repeat(64);
+        if (changed === "missing transaction") result.transactions = [];
+        if (changed === "proof")
+          result.transactions[0].proof = result.transactions[0].proof.replace(
+            "22".repeat(64),
+            "33".repeat(64),
+          );
+        if (changed === "validity height")
+          result.transactions[0].validityStartHeight = 99;
+      }
+      return result;
+    };
+    const result = await h.call(`/payments/${r.body.id}/reconcile`, {
+      hash: HASH,
+    });
+    assert.equal(result.body.state, "UNKNOWN");
+    assert.equal(result.body.receipt, null);
+    assert.equal((await h.reserve(c.claimId)).status, 409);
+  });
+}
+
+test("enabled HTLC verification never advertises atomic sender binding", async (t) => {
+  const h = await paymentHarness();
+  t.after(() => h.close());
+  const c = await h.campaign();
+  const config = (await h.call("/config")).body;
+  const review = (await h.call(`/claims/${c.claimId}/payment/review`, {})).body;
+  for (const gate of [config.payments, review.gate]) {
+    assert.equal(gate.enabled, true);
+    assert.equal(gate.htlcVerificationSupported, true);
+    assert.equal(gate.senderBindingSupported, false);
   }
 });

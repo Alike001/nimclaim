@@ -1,3 +1,5 @@
+> Historical investigation, superseded for the implemented payout path by [PAYMENTS.md](PAYMENTS.md). The integration now preserves organiser authorisation and verifies the native HTLC sender; physical testing and mainnet restrictions remain in force. Statements below describe the earlier implementation unless explicitly about upstream host behavior.
+
 # Sender selection and payer-authorized settlement review
 
 Reviewed 8 November 2026 on Node 24.14.1, starting from NimClaim `5f4ac639`. This is an investigation and a proposed design, **not an implemented policy change or spending authorization**. No native wallet request, real signature, payment, spending enablement, deployment or push was performed.

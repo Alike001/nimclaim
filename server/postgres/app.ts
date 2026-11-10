@@ -1,3 +1,4 @@
+import type { PaymentGate } from "../../shared/payments.js";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -14,9 +15,10 @@ import {
 } from "../http-contract.js";
 import { checkPassword, digest, randomToken } from "../crypto.js";
 
-const disabledGate = {
+const disabledGate: PaymentGate = {
   enabled: false,
   senderBindingSupported: false,
+  htlcVerificationSupported: false,
   reasons: ["Spending is permanently disabled in TESTNET staging."],
 };
 export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
