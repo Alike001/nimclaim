@@ -4,6 +4,48 @@ import {
   NimiqProviderError,
   type NimiqProvider,
 } from "@nimiq/mini-app-sdk";
+
+export type WalletAccountState = {
+  accounts: string[];
+  walletAddress: string;
+  htlcAddress: string | null;
+};
+
+function parseWalletAccounts(accounts: readonly string[]): WalletAccountState {
+  if (
+    !Array.isArray(accounts) ||
+    typeof accounts[0] !== "string" ||
+    !accounts[0].trim()
+  ) {
+    throw new Error("Nimiq Pay did not share a valid wallet address.");
+  }
+
+  return {
+    accounts: [...accounts],
+    walletAddress: accounts[0],
+    htlcAddress: accounts[1] || null,
+  };
+}
+
+export function watchWalletAccounts(
+  provider: NimiqProvider,
+  listener: (accounts: WalletAccountState | null) => void,
+) {
+  const handle = (accounts: string[]) => {
+    try {
+      listener(parseWalletAccounts(accounts));
+    } catch {
+      listener(null);
+    }
+  };
+
+  provider.on("accountsChanged", handle);
+
+  return () => {
+    provider.removeListener("accountsChanged", handle);
+  };
+}
+
 export function walletError(error: unknown): string {
   if (NimiqProviderError.is(error)) {
     const messages: Record<string, string> = {
@@ -15,12 +57,16 @@ export function walletError(error: unknown): string {
         "Nimiq Pay reported a network error. Check its connection before retrying.",
       INTERNAL_ERROR: "Nimiq Pay could not complete the request.",
     };
+
     return `${messages[error.type] ?? "Nimiq Pay could not complete the request."} (${error.type}${error.code === undefined ? "" : `, ${error.code}`})`;
   }
+
   return error instanceof Error ? error.message : "Wallet request failed.";
 }
+
 export async function connectWallet(network: string) {
   let provider: NimiqProvider;
+
   try {
     provider = await init({ timeout: 3000 });
   } catch {
@@ -28,47 +74,105 @@ export async function connectWallet(network: string) {
       "Nimiq Pay is unavailable in this browser. Open this invitation inside Nimiq Pay, or update the app and retry.",
     );
   }
+
   const hostNetwork = getHostNetwork();
-  if (!hostNetwork)
+
+  if (!hostNetwork) {
     throw new Error(
       "Wallet network is unavailable. Update Nimiq Pay before claiming.",
     );
-  if (hostNetwork !== network)
+  }
+
+  if (hostNetwork !== network) {
     throw new Error(
       `Network mismatch: this campaign uses ${network}; Nimiq Pay uses ${hostNetwork}. Switch networks before claiming.`,
     );
-  const accounts = await provider.listAccounts();
-  if (!accounts.length)
-    throw new Error("Nimiq Pay did not share any accounts.");
-  // Status methods do not use normalized wallet errors and can fail independently.
+  }
+
+  const accountState = parseWalletAccounts(await provider.listAccounts());
+
   const [consensus, height] = await Promise.allSettled([
     provider.isConsensusEstablished(),
     provider.getBlockNumber(),
   ]);
+
   return {
     provider,
-    accounts,
+    ...accountState,
     network: hostNetwork,
     consensus: consensus.status === "fulfilled" ? consensus.value : null,
     height: height.status === "fulfilled" ? height.value : null,
   };
 }
+
 export async function signChallenge(
   provider: NimiqProvider,
   message: string,
   network: string,
+  expectedWalletAddress: string,
 ) {
-  if (getHostNetwork() !== network)
+  if (getHostNetwork() !== network) {
     throw new Error("Wallet network changed. Reconnect before signing.");
+  }
+
   let challenge: { network?: string; origin?: string };
+
   try {
     challenge = JSON.parse(message);
   } catch {
     throw new Error("Server signing challenge is invalid.");
   }
-  if (challenge.network !== network || challenge.origin !== location.origin)
+
+  if (challenge.network !== network || challenge.origin !== location.origin) {
     throw new Error(
       "Signing challenge network or origin does not match this page. Claim blocked.",
     );
-  return provider.sign(message);
+  }
+
+  let walletChanged = false;
+
+  const handleAccountsChanged = (accounts: string[]) => {
+    if (
+      !Array.isArray(accounts) ||
+      accounts[0] !== expectedWalletAddress
+    ) {
+      walletChanged = true;
+    }
+  };
+
+  // Subscribe before reading accounts to close the account-change race.
+  provider.on("accountsChanged", handleAccountsChanged);
+
+  try {
+    const before = parseWalletAccounts(await provider.listAccounts());
+
+    if (walletChanged || before.walletAddress !== expectedWalletAddress) {
+      throw new Error(
+        "The Nimiq Pay wallet address changed. Reconnect before signing.",
+      );
+    }
+
+    if (getHostNetwork() !== network) {
+      throw new Error("Wallet network changed. Reconnect before signing.");
+    }
+
+    const signed = await provider.sign(message);
+
+    // Verify again after the wallet interaction, not just before it.
+    const after = parseWalletAccounts(await provider.listAccounts());
+
+    if (walletChanged || after.walletAddress !== expectedWalletAddress) {
+      throw new Error(
+        "The Nimiq Pay wallet changed during signing. Reconnect before retrying.",
+      );
+    }
+
+    if (getHostNetwork() !== network) {
+      throw new Error("Wallet network changed during signing.");
+    }
+
+    return signed;
+  } finally {
+    provider.removeListener("accountsChanged", handleAccountsChanged);
+  }
 }
