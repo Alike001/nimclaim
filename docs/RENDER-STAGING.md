@@ -1,5 +1,7 @@
 # $0/month Render + Neon TESTNET staging
 
+The PostgreSQL staging deployment is **financially disabled**. It does not implement native payout reservation, dispatch or reconciliation APIs; preserved payment tables and locks do not enable them. Only the separate SQLite runtime contains the TESTNET payout flow, which remains spending-disabled pending the [release blockers and capability review](PAYMENTS.md). No staging configuration flag converts this Render deployment into a payout service.
+
 The original infrastructure preparation began at `207bcd2` and replaced its **paid disk proposal** with one Render Free Node web service and a separate Neon Free Postgres database. The dated continuations below record later Neon acceptance. The latest local continuation starts from published commit `93f32c0`; the user reports an existing Render Blueprint with an unapplied initial plan. No Render web service is deployed. The existing local SQLite database, `.env`, organiser credentials, private CA/runtime data and Nimlane are not migration inputs.
 
 ## Verdict and next human action

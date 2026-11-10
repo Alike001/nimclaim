@@ -3,11 +3,31 @@ import assert from "node:assert/strict";
 import { createApp } from "../server/app.js";
 import { passwordHash } from "../server/crypto.js";
 import type { PaymentOptions } from "../server/payments.js";
-import type { Intent, Rpc } from "../server/rpc.js";
+import {
+  cosignerPublicKeys,
+  trustedCosigners,
+  type Intent,
+  type Rpc,
+} from "../server/rpc.js";
 import { testSigner } from "./helpers.js";
 export const HASH = "a".repeat(64);
 export class FixtureRpc implements Rpc {
   intent?: Intent;
+  owner = testSigner();
+  htlc = testSigner().address;
+  timeout = Date.now() + 86400_000;
+  account: Record<string, unknown> = {};
+  accountData() {
+    return {
+      address: this.htlc,
+      type: "htlc",
+      balance: 100_000_000,
+      sender: this.owner.address,
+      recipient: trustedCosigners("testnet")[0],
+      timeout: this.timeout,
+      ...this.account,
+    };
+  }
   tx: Record<string, unknown> = {};
   head = 100;
   finality = true;
@@ -21,17 +41,28 @@ export class FixtureRpc implements Rpc {
       hash: HASH,
       from: i.sender,
       to: i.recipient,
-      fromType: 0,
+      fromType: 2,
       toType: 0,
       value: i.amount,
       fee: i.fee,
       networkId: 5,
-      validityStartHeight: i.validity_start_height,
+      validityStartHeight: i.validity_start_height + 1,
       flags: 0,
       senderData: "",
       recipientData: "",
       blockNumber: 101,
       executionResult: true,
+      // Synthetic node evidence: no real cosigner signature or transaction broadcast.
+      // Signature validity is asserted by the independent full node's execution/finality.
+      proof:
+        "0100" +
+        cosignerPublicKeys.testnet[0] +
+        "00" +
+        "11".repeat(64) +
+        "00" +
+        this.owner.publicKey +
+        "00" +
+        "22".repeat(64),
       ...this.tx,
     };
   }
@@ -39,6 +70,8 @@ export class FixtureRpc implements Rpc {
     this.calls.push(method);
     if (this.offline) throw new Error("Synthetic RPC outage");
     switch (method) {
+      case "getAccountByAddress":
+        return this.accountData();
       case "getNetworkId":
         return this.network;
       case "isConsensusEstablished":
@@ -80,13 +113,13 @@ export async function paymentHarness(
   const sender = testSigner(),
     recipient = testSigner(),
     rpc = new FixtureRpc();
+  rpc.owner = sender;
   const paymentOptions = {
     enabled: true,
     spendingNetwork: "testnet" as const,
     maxLuna: 10_000_000,
     feeLuna: 1000,
     rpc,
-    verifySelectedSender: async () => sender.address,
     ...options,
   };
   const origin = "https://payout.test";
@@ -124,7 +157,10 @@ export async function paymentHarness(
     .get("set-cookie")!
     .split(";")[0];
   async function proof(path: string, signer = sender) {
-    const challenge = await call(path, {});
+    const challenge = await call(
+      path,
+      path.endsWith("/payment/challenge") ? { sender: rpc.htlc } : {},
+    );
     assert.equal(challenge.status, 201);
     return {
       challengeId: challenge.body.id,

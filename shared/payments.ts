@@ -8,6 +8,7 @@ export interface Intent {
   amount: number;
   fee: number;
   network: Network;
+  /** Reservation head: minimum acceptable inclusion block, not the native validity start. */
   validity_start_height: number;
   created: number;
   expires: number;
@@ -28,7 +29,12 @@ export interface Receipt {
 }
 export interface PaymentGate {
   enabled: boolean;
+  /** Atomic wallet commitment to the reserved sender through native confirmation.
+   * The current Mini App SDK provides no such guarantee; always false. */
   senderBindingSupported: boolean;
+  /** Server can validate HTLC funding and reconcile its exact sender independently.
+   * Does not guarantee fresh host accounts or bind the wallet's next transaction. */
+  htlcVerificationSupported: boolean;
   reasons: string[];
 }
 export type PaymentState = "SUBMITTING" | "UNKNOWN" | "CONFIRMED" | "FAILED";

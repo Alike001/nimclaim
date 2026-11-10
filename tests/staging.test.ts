@@ -290,7 +290,8 @@ test("hosted provider receives exact origin-bound challenge and rejects missing/
   const oldWindow = globalThis.window;
   const oldLocation = globalThis.location;
   let signs = 0,
-    accounts = 0;
+    accounts = 0,
+    disconnects = 0;
   const message = JSON.stringify({
     domain: "NimClaim/claim/v1",
     purpose: "Request a contributor reward; no payment or transaction",
@@ -300,6 +301,9 @@ test("hosted provider receives exact origin-bound challenge and rejects missing/
     nonce: "synthetic",
   });
   const provider = {
+    disconnect() {
+      disconnects++;
+    },
     listAccounts: async () => {
       accounts++;
       return ["synthetic"];
@@ -330,6 +334,7 @@ test("hosted provider receives exact origin-bound challenge and rejects missing/
       );
     }
     assert.equal(accounts, 1);
+    assert.equal(disconnects, 1);
     assert.equal(signs, 1);
     window.nimiqPay = { network: "testnet" } as typeof window.nimiqPay;
     await assert.rejects(

@@ -49,7 +49,7 @@ const { server, db } = createApp({
     rpc: process.env.RPC_URL
       ? new HttpRpc(process.env.RPC_URL, process.env.RPC_AUTHORIZATION)
       : undefined,
-    // No selected-sender assurance adapter exists in the official SDK. Never infer it from signatures or listAccounts.
+    // HTLC ownership and cosigner are independently verified through read-only RPC.
   },
   staticDir: process.env.NODE_ENV === "production" ? "./dist" : undefined,
 });

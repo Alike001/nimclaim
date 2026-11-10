@@ -37,7 +37,7 @@ export async function connectWallet(network: string) {
     throw new Error(
       `Network mismatch: this campaign uses ${network}; Nimiq Pay uses ${hostNetwork}. Switch networks before claiming.`,
     );
-  const accounts = await provider.listAccounts();
+  const accounts = await freshWalletAccounts(provider);
   if (!accounts.length)
     throw new Error("Nimiq Pay did not share any accounts.");
   // Status methods do not use normalized wallet errors and can fail independently.
@@ -71,4 +71,53 @@ export async function signChallenge(
       "Signing challenge network or origin does not match this page. Claim blocked.",
     );
   return provider.sign(message);
+}
+
+export interface PayoutAccounts {
+  organiser: string;
+  htlc: string;
+}
+// SDK 0.2.5 caches successful reads. Never fall back to a previous approval on
+// rejection/error. disconnect() clears the provider cache, not backend sessions
+// or host permissions; renewed access may require another approval dialog.
+export async function freshWalletAccounts(provider: NimiqProvider) {
+  provider.disconnect();
+  const accounts = await provider.listAccounts();
+  if (
+    !Array.isArray(accounts) ||
+    accounts.some((a) => typeof a !== "string" || !a)
+  )
+    throw new Error("Nimiq Pay returned invalid accounts. Payment blocked.");
+  return accounts;
+}
+
+// Host-specific roles reviewed at nimiq/nimiq-pay-app revision
+// dd90a9c5443be3f4e0ddeac454486c9d512fcae3, useMiniAppHost.ts:getNimiqAccounts.
+// This ordering is NOT an SDK contract or proof of ownership. The campaign's
+// signed organiser identity and independent server HTLC checks remain mandatory.
+// Host bridge caches and changes after approval still require device validation.
+export async function payoutAccounts(
+  provider: NimiqProvider,
+  expected?: PayoutAccounts,
+) {
+  const accounts = await freshWalletAccounts(provider);
+  if (
+    accounts.length !== 2 ||
+    !accounts[0] ||
+    !accounts[1] ||
+    accounts[0] === accounts[1]
+  )
+    throw new Error(
+      "Both the local organiser wallet and active remote HTLC are required. Payment blocked.",
+    );
+  const selected = { organiser: accounts[0], htlc: accounts[1] };
+  if (
+    expected &&
+    (selected.organiser !== expected.organiser ||
+      selected.htlc !== expected.htlc)
+  )
+    throw new Error(
+      "Active wallet or HTLC changed. Payment blocked; reconcile any reservation.",
+    );
+  return selected;
 }

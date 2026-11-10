@@ -1,4 +1,4 @@
-import { Address } from "@nimiq/core";
+import { Address, PublicKey, HashedTimeLockedContract } from "@nimiq/core";
 import { z } from "zod";
 
 import type { Network, Intent, Receipt } from "../shared/payments.js";
@@ -36,11 +36,13 @@ const transaction = z.object({
   recipientData: z.string(),
   blockNumber: integer,
   executionResult: z.boolean(),
+  proof: z.string().regex(/^(?:[a-f0-9]{2})+$/i),
 });
 export interface Rpc {
   call(method: string, params: unknown[]): Promise<unknown>;
 }
 const READ_METHODS = new Set([
+  "getAccountByAddress",
   "getNetworkId",
   "isConsensusEstablished",
   "getBlockNumber",
@@ -118,6 +120,79 @@ export async function verifiedHead(rpc: Rpc, network: Network) {
     throw new Error("RPC consensus unavailable.");
   return integer.parse(await rpc.call("getBlockNumber", []));
 }
+// Official nimiq-pay-app/src/lib/index.ts keys, reviewed 2026-11-10.
+// Rotation requires a source review; never accept client-configured cosigners.
+export const cosignerPublicKeys = {
+  testnet: [
+    "c1534c708122968212c6709526801d18218ce9303590f2bca473213d99b24aaf",
+    "1a0fc4eb1376b604c7df66d098b29bbb2fcfd68ef328ce98ae0f7d19f4f6d456",
+  ],
+  mainnet: ["91b21f4b100273bd7034f6369c29d1f7ba72dba7de6720ad3cd8b81916218913"],
+} as const;
+export function publicKeyAddress(hex: string) {
+  const key = PublicKey.fromHex(hex);
+  try {
+    const derived = key.toAddress();
+    try {
+      return derived.toUserFriendlyAddress();
+    } finally {
+      derived.free();
+    }
+  } finally {
+    key.free();
+  }
+}
+export function trustedCosigners(network: Network) {
+  return cosignerPublicKeys[network].map(publicKeyAddress);
+}
+const htlcAccount = z.object({
+  address: z.string(),
+  type: z.literal("htlc"),
+  balance: integer,
+  sender: z.string(),
+  recipient: z.string(),
+  timeout: integer,
+});
+export async function verifyHtlc(
+  rpc: Rpc,
+  network: Network,
+  htlc: string,
+  organiser: string,
+  amount: number,
+  fee: number,
+  now: number,
+) {
+  await verifiedHead(rpc, network);
+  const account = htlcAccount.parse(
+    await rpc.call("getAccountByAddress", [address(htlc)]),
+  );
+  if (
+    address(account.address) !== address(htlc) ||
+    address(account.sender) !== organiser
+  )
+    throw new Error(
+      "HTLC address or owner does not match the authenticated organiser.",
+    );
+  if (!trustedCosigners(network).includes(address(account.recipient)))
+    throw new Error(
+      "HTLC recipient is not a trusted Nimiq Pay cosigner for this network.",
+    );
+  // Albatross HTLC timeout is a Unix timestamp in milliseconds, not a block height.
+  if (account.timeout <= now) throw new Error("HTLC has expired.");
+  if (
+    !Number.isSafeInteger(amount + fee) ||
+    amount < 0 ||
+    fee < 0 ||
+    account.balance < amount + fee
+  )
+    throw new Error("HTLC balance is insufficient for reward plus fee.");
+  return {
+    sender: address(htlc),
+    organiser,
+    htlcRecipient: address(account.recipient),
+    htlcTimeout: account.timeout,
+  };
+}
 export type Verification = {
   state: "CONFIRMED" | "FAILED" | "UNKNOWN";
   reason: string;
@@ -128,9 +203,10 @@ function matches(
   tx: z.infer<typeof transaction>,
   intent: Intent,
   hash: string,
+  organiser: string,
 ) {
   if (
-    tx.fromType !== 0 ||
+    tx.fromType !== 2 ||
     tx.toType !== 0 ||
     tx.flags !== 0 ||
     tx.senderData !== "" ||
@@ -141,13 +217,34 @@ function matches(
     address(tx.to) !== intent.recipient ||
     tx.value !== intent.amount ||
     tx.fee !== intent.fee ||
-    tx.validityStartHeight !== intent.validity_start_height ||
+    tx.validityStartHeight > tx.blockNumber ||
     tx.blockNumber < intent.validity_start_height ||
     tx.blockNumber <= 0
   )
     throw new EvidenceMismatch(
       "Transaction does not match the immutable payment intent.",
     );
+  // Decode both identities locally; the independently queried full node verifies
+  // the signatures and execution. This is not light-client consensus verification.
+  try {
+    const proof = HashedTimeLockedContract.proofToPlain(
+      Buffer.from(tx.proof, "hex"),
+    );
+    if (
+      proof.type !== "early-resolve" ||
+      address(proof.creator) !== organiser ||
+      !cosignerPublicKeys[intent.network].some(
+        (key) => key === proof.publicKey,
+      ) ||
+      address(proof.signer) !== publicKeyAddress(proof.publicKey) ||
+      proof.pathLength !== 0 ||
+      proof.creatorPathLength !== 0 ||
+      address(proof.creator) !== publicKeyAddress(proof.creatorPublicKey)
+    )
+      throw new Error("Invalid HTLC early-resolve proof");
+  } catch {
+    throw new EvidenceMismatch("Invalid HTLC early-resolve sender proof.");
+  }
 }
 // A hash is only a lookup hint. All receipt fields below come from our configured node.
 export async function verifyPayment(
@@ -155,6 +252,7 @@ export async function verifyPayment(
   intent: Intent,
   hash: string,
   now: number,
+  organiser: string,
 ): Promise<Verification> {
   hashSchema.parse(hash);
   try {
@@ -162,7 +260,7 @@ export async function verifyPayment(
     const tx = transaction.parse(
       await rpc.call("getTransactionByHash", [hash]),
     );
-    matches(tx, intent, hash);
+    matches(tx, intent, hash, organiser);
     if (tx.blockNumber > head)
       return {
         state: "UNKNOWN",
@@ -190,10 +288,12 @@ export async function verifyPayment(
         reason: "Transaction is not in the canonical block. Do not retry.",
       };
     const canonical = transaction.parse(included);
-    matches(canonical, intent, hash);
+    matches(canonical, intent, hash, organiser);
     if (
       canonical.blockNumber !== tx.blockNumber ||
-      canonical.executionResult !== tx.executionResult
+      canonical.executionResult !== tx.executionResult ||
+      canonical.proof !== tx.proof ||
+      canonical.validityStartHeight !== tx.validityStartHeight
     )
       return {
         state: "UNKNOWN",
@@ -233,6 +333,9 @@ export async function verifyPayment(
     if (
       !finalTx.success ||
       finalTx.data.executionResult !== tx.executionResult ||
+      finalTx.data.blockNumber !== tx.blockNumber ||
+      finalTx.data.proof !== tx.proof ||
+      finalTx.data.validityStartHeight !== tx.validityStartHeight ||
       finalBlock.hash !== block.hash ||
       finalBlock.number !== block.number
     )
@@ -240,7 +343,7 @@ export async function verifyPayment(
         state: "UNKNOWN",
         reason: "Canonical block changed. Do not retry.",
       };
-    matches(finalTx.data, intent, hash);
+    matches(finalTx.data, intent, hash, organiser);
     return {
       state: tx.executionResult ? "CONFIRMED" : "FAILED",
       reason: tx.executionResult

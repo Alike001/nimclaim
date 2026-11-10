@@ -3,23 +3,73 @@ import {
   NimiqProviderError,
   type NimiqProvider,
 } from "@nimiq/mini-app-sdk";
+import { payoutAccounts, type PayoutAccounts } from "./wallet";
 import { api } from "./api";
 import type { Intent, Network } from "../shared/payments";
 
+// Once reservation is requested, even a lost response must prevent resubmission
+// in this page. The durable server lock protects reloads and other clients.
+const submissions = new WeakMap<NimiqProvider, Set<string>>();
+
 // Must be called only from an explicit organiser action after reviewing the immutable intent.
-// Current production backend denies reservation: SDK 0.2.5 cannot commit the selected sender.
+// Native Nimiq Pay uses the active remote HTLC; there is no sender parameter.
 export async function submitNativePayment(
   provider: NimiqProvider,
   claimId: string,
   network: Network,
+  expectedAccounts: PayoutAccounts,
   proof: { challengeId: string; publicKey: string; signature: string },
   request: typeof api = api,
   timeoutMs = 60_000,
 ) {
+  let claims = submissions.get(provider);
+  if (!claims) {
+    claims = new Set();
+    submissions.set(provider, claims);
+  }
+  if (claims.has(claimId))
+    throw new Error(
+      "Payment already requested. Do not retry; reconcile the existing attempt.",
+    );
+  claims.add(claimId);
+  let reservationRequested = false;
+  try {
+    return await performNativePayment(
+      provider,
+      claimId,
+      network,
+      { ...expectedAccounts },
+      proof,
+      request,
+      timeoutMs,
+      () => {
+        reservationRequested = true;
+      },
+    );
+  } finally {
+    // Access rejection before any reservation is safe to review again explicitly.
+    if (!reservationRequested) claims.delete(claimId);
+  }
+}
+
+async function performNativePayment(
+  provider: NimiqProvider,
+  claimId: string,
+  network: Network,
+  expectedAccounts: PayoutAccounts,
+  proof: { challengeId: string; publicKey: string; signature: string },
+  request: typeof api,
+  timeoutMs: number,
+  reserving: () => void,
+) {
+  if (getHostNetwork() !== network)
+    throw new Error("Wallet network changed. Payment blocked.");
+  await payoutAccounts(provider, expectedAccounts);
   if (getHostNetwork() !== network)
     throw new Error("Wallet network changed. Payment blocked.");
   let reservation: { id: string; permit: string; intent: Intent };
   try {
+    reserving();
     reservation = await request(`/claims/${claimId}/payment/reserve`, proof);
   } catch (error) {
     throw new Error(
@@ -52,7 +102,8 @@ export async function submitNativePayment(
   if (
     getHostNetwork() !== network ||
     dispatch.intent.network !== network ||
-    dispatch.intent.claim_id !== claimId
+    dispatch.intent.claim_id !== claimId ||
+    dispatch.intent.sender !== expectedAccounts.htlc
   ) {
     await request(`/payments/${reservation.id}/outcome`, {
       outcome: "error",
@@ -68,12 +119,14 @@ export async function submitNativePayment(
   };
   try {
     const intent = dispatch.intent;
+    await payoutAccounts(provider, expectedAccounts);
+    if (getHostNetwork() !== network)
+      throw new Error("Wallet network changed. Payment blocked.");
     const hash = await Promise.race([
       provider.sendBasicTransaction({
         recipient: intent.recipient,
         value: intent.amount,
         fee: intent.fee,
-        validityStartHeight: intent.validity_start_height,
       }),
       new Promise<never>((_, reject) => {
         timer = setTimeout(

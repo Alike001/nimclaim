@@ -39,7 +39,6 @@ test("mobile mode requires TESTNET before opening a database and forces native s
       spendingNetwork: "testnet",
       maxLuna: 100000,
       rpc: { call: async () => 100 },
-      verifySelectedSender: async () => "synthetic",
     },
   });
   assert.equal(app.payments.gate().enabled, false);

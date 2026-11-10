@@ -1,10 +1,12 @@
-import type { PaymentView } from "../shared/payments.js";
+import type { PaymentGate, PaymentView } from "../shared/payments.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { atomic, type DB } from "./db.js";
 import { digest, randomToken, verifyOwner } from "./crypto.js";
 import {
   chain,
+  address,
+  verifyHtlc,
   hashSchema,
   verifiedHead,
   verifyPayment,
@@ -47,15 +49,6 @@ export interface PaymentOptions {
   maxLuna?: number;
   feeLuna?: number;
   rpc?: Rpc;
-  /** Backend integration seam for a future documented, verifiable pre-broadcast sender commitment.
-   * NOT provided by the current SDK. Production never installs one. Tests supply synthetic assurance only. */
-  verifySelectedSender?: (context: {
-    sender: string;
-    network: Network;
-    claimId: string;
-    proof: Proof;
-    message: string;
-  }) => Promise<string | null>;
 }
 export class Payments {
   constructor(
@@ -77,7 +70,7 @@ export class Payments {
       this.options.now(),
     );
   }
-  gate() {
+  gate(): PaymentGate {
     const reasons: string[] = [];
     if (!this.options.origin.startsWith("https://"))
       reasons.push("Native spending requires an HTTPS app origin.");
@@ -94,13 +87,12 @@ export class Payments {
       reasons.push("A positive server-side per-payment limit is required.");
     if (!this.options.rpc)
       reasons.push("Independent Nimiq RPC is not configured.");
-    if (!this.options.verifySelectedSender)
-      reasons.push(
-        "Current Nimiq Pay SDK cannot bind the wallet-selected sender before broadcast. Payments are blocked.",
-      );
+    if (this.options.network === "mainnet")
+      reasons.push("Mainnet spending is disabled for the HTLC integration.");
     return {
       enabled: reasons.length === 0,
-      senderBindingSupported: !!this.options.verifySelectedSender,
+      senderBindingSupported: false,
+      htlcVerificationSupported: true,
       reasons,
     };
   }
@@ -166,7 +158,17 @@ export class Payments {
       payment: this.view(claimId),
     };
   }
-  challenge(campaignId: string, sessionHash: string, claimId?: string) {
+  challenge(
+    campaignId: string,
+    sessionHash: string,
+    claimId?: string,
+    funding?: {
+      sender: string;
+      organiser: string;
+      htlcRecipient: string;
+      htlcTimeout: number;
+    },
+  ) {
     const campaign = this.campaign(campaignId);
     requirePayment(
       campaign.expires > this.options.now(),
@@ -174,7 +176,7 @@ export class Payments {
       "Campaign has expired.",
     );
     const details = claimId
-      ? this.details(claimId)
+      ? { ...this.details(claimId), ...funding }
       : {
           campaignId,
           amount: campaign.amount,
@@ -193,11 +195,13 @@ export class Payments {
         409,
         "Campaign wallet is already authorized and immutable.",
       );
+    if (claimId)
+      requirePayment(funding, 409, "Verified HTLC funding is required.");
     const id = randomUUID(),
       expires = Math.min(this.options.now() + 300_000, campaign.expires),
       purpose = claimId ? "pay" : "bind";
     const message = JSON.stringify({
-      domain: `NimClaim/organiser/${purpose}/v1`,
+      domain: `NimClaim/organiser/${purpose}/${claimId ? "v2" : "v1"}`,
       purpose: claimId
         ? "Authorize this exact reward payment intent; this signature alone sends no funds"
         : "Authorize this signing wallet for this campaign; this does not prove the payment sender",
@@ -229,6 +233,31 @@ export class Payments {
       );
     });
     return { id, message, expires };
+  }
+  private async funding(claimId: string, sender: string) {
+    const details = this.details(claimId);
+    requirePayment(this.options.rpc, 503, "Independent RPC is not configured.");
+    try {
+      return await verifyHtlc(
+        this.options.rpc,
+        details.network,
+        address(sender),
+        details.sender,
+        details.amount,
+        details.fee,
+        this.options.now(),
+      );
+    } catch (error) {
+      throw new PaymentError(
+        409,
+        error instanceof Error ? error.message : "HTLC verification failed.",
+      );
+    }
+  }
+  async paymentChallenge(claimId: string, sessionHash: string, sender: string) {
+    const details = this.details(claimId);
+    const funding = await this.funding(claimId, sender);
+    return this.challenge(details.campaignId, sessionHash, claimId, funding);
   }
   private proof(
     campaignId: string,
@@ -316,7 +345,11 @@ export class Payments {
       "Signing wallet does not match the campaign organiser wallet.",
     );
     requirePayment(
-      JSON.stringify(binding.details) === JSON.stringify(details),
+      JSON.stringify(binding.details) ===
+        JSON.stringify({
+          ...details,
+          ...(await this.funding(claimId, binding.details.sender)),
+        }),
       409,
       "Payment details changed. Review again.",
     );
@@ -324,19 +357,6 @@ export class Payments {
       details.amount <= this.options.maxLuna!,
       403,
       "Payment exceeds the server spending limit.",
-    );
-    // Sharing or signing with this key is deliberately insufficient; the current production adapter has no assurance implementation.
-    const selected = await this.options.verifySelectedSender!({
-      sender: details.sender,
-      network: details.network,
-      claimId,
-      proof: input,
-      message: row.message,
-    });
-    requirePayment(
-      selected === details.sender,
-      403,
-      "Wallet-selected sender is unverified or different. Payment blocked before broadcast.",
     );
     const height = await verifiedHead(this.options.rpc!, details.network);
     const permit = randomToken();
@@ -351,6 +371,11 @@ export class Payments {
         current.expires > this.options.now(),
         410,
         "Campaign has expired; no new payment can begin.",
+      );
+      requirePayment(
+        binding.details.htlcTimeout > this.options.now(),
+        409,
+        "HTLC expired during reservation. Payment blocked.",
       );
       this.proof(details.campaignId, sessionHash, "pay", input);
       requirePayment(
@@ -371,7 +396,7 @@ export class Payments {
         id: randomUUID(),
         claim_id: claimId,
         campaign_id: details.campaignId,
-        sender: details.sender,
+        sender: binding.details.sender,
         recipient: details.recipient,
         amount: details.amount,
         fee: details.fee,
@@ -521,6 +546,7 @@ export class Payments {
         intent,
         candidate,
         this.options.now(),
+        this.wallet(intent.campaign_id)!.address,
       );
     } catch (error) {
       if (!(error instanceof EvidenceMismatch)) throw error;

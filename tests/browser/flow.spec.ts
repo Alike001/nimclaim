@@ -85,6 +85,7 @@ async function injectWallet(
       const win = window as any;
       win.nimiqPay = { network: mode === "network" ? "mainnet" : "testnet" };
       win.nimiq = {
+        disconnect() {},
         async listAccounts() {
           if (mode === "rejected") throw { code: 4001, message: "Rejected" };
           if (mode === "legacy")
@@ -186,10 +187,46 @@ test("organiser, synthetic wallet signature, review and recipient status survive
     .click();
   await expect(
     page.getByRole("region", { name: "Payment review" }),
-  ).toContainText("Unverifiable with the current SDK");
+  ).toContainText("HTLC transaction sender");
   await expect(
     page.getByRole("button", { name: "Connect wallet for payment review" }),
   ).toBeDisabled();
+
+  await expect(
+    page.getByRole("region", { name: "Payment review" }),
+  ).toContainText("Verified independently before reservation");
+
+  // Synthetic review gate only: no server spending setting is changed.
+  // A host exposing only the local address must stop before a challenge or transfer.
+  let paymentChallenges = 0;
+  await page.route("**/api/claims/*/payment/review", async (route) => {
+    const response = await route.fetch();
+    const review = await response.json();
+    await route.fulfill({
+      response,
+      json: {
+        ...review,
+        gate: {
+          enabled: true,
+          senderBindingSupported: false,
+          htlcVerificationSupported: true,
+          reasons: [],
+        },
+      },
+    });
+  });
+  await page.route("**/api/claims/*/payment/challenge", async (route) => {
+    paymentChallenges++;
+    await route.abort();
+  });
+  await page
+    .getByRole("button", { name: "Review native NIM payment", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Connect wallet for payment review" })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("active remote HTLC");
+  expect(paymentChallenges).toBe(0);
 
   await expect(
     page.getByRole("button", { name: "Approve for payment" }),
