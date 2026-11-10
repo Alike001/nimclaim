@@ -3,10 +3,14 @@ import { startBrowserServer } from "../browser-server";
 
 // Each test receives a new DB, sessions and rate limiter. Never bypass security
 // or reuse a listener/session belonging to another test or the real installation.
-export const test = base.extend<{ isolatedApi: void }>({
+export const test = base.extend<{
+  isolatedApi: void;
+  network: "testnet" | "mainnet";
+}>({
+  network: ["testnet", { option: true }],
   isolatedApi: [
-    async ({}, use) => {
-      const close = await startBrowserServer();
+    async ({ network }, use) => {
+      const close = await startBrowserServer(network);
       try {
         await use();
       } finally {

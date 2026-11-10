@@ -1,0 +1,75 @@
+# Render MAINNET claims deployment
+
+NimClaim's separate MAINNET service supports private campaigns, organiser wallet binding, signed recipient claims and review. **All approvals are unpaid in NimClaim.** The runtime cannot initiate transfers, accept a candidate hash or verify a payment. The TESTNET service still uses `render.yaml`, `start:staging` and its original Neon database.
+
+## Production environment
+
+[`render.production.yaml`](../render.production.yaml) defines `nimclaim-mainnet`, a separate Render web service. It uses `npm ci --include=dev && npm run build`, starts with `npm run start:mainnet`, and exposes `/healthz` after startup checks succeed. The production application does not load `.env`, create an organiser, migrate on boot, import data or fall back to SQLite.
+
+| Variable                   | Required value                                                                                                                                                        |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_VERSION`             | `24.14.1` (Render build/runtime)                                                                                                                                      |
+| `NODE_ENV`                 | `production`                                                                                                                                                          |
+| `NIMCLAIM_PRODUCTION`      | `1`                                                                                                                                                                   |
+| `NETWORK`                  | `mainnet`                                                                                                                                                             |
+| `SPENDING_ENABLED`         | `false`                                                                                                                                                               |
+| `MAX_PAYMENT_LUNA`         | `0`                                                                                                                                                                   |
+| `PAYMENT_FEE_LUNA`         | `0`                                                                                                                                                                   |
+| `APP_ORIGIN`               | Exact assigned HTTPS URL, e.g. `https://nimclaim-mainnet.onrender.com`. Include any Render hostname suffix; omit paths, trailing slash and ports.                     |
+| `PRODUCTION_DATABASE_HOST` | Direct endpoint hostname of the new Neon project, e.g. `ep-<production-id>.<region>.aws.neon.tech`, without `-pooler`, scheme or port.                                |
+| `DATABASE_URL`             | Pooled URI for `nimclaim_app` and database `nimclaim_mainnet` at the corresponding `-pooler` hostname. TLS and hostname verification are enforced by the application. |
+| `PORT`                     | Provided by Render; the start script defaults to `10000` outside Render.                                                                                              |
+
+`APP_ORIGIN` is the sole browser/signing origin and gateway Host. Start with the assigned Render subdomain and no custom domains; Render uses its subdomain for health checks when there is no verified custom domain. Use one origin for links, sessions, signatures and health checks. [Render health check Host rules](https://render.com/docs/health-checks#http-health-checks-web-services-only)
+
+Leave `NIMCLAIM_STAGING`, `NIMCLAIM_MOBILE_TEST`, `DATABASE_PATH`, `DIRECT_DATABASE_URL`, `SPENDING_NETWORK`, `RPC_URL`, `RPC_AUTHORIZATION`, test settings and organiser passwords/hashes out of the Render service. The service needs no signing key, seed, funded wallet, RPC credential or shared session secret. It issues its own host-only Secure session cookie (`nimclaim_mainnet_session`) and stores token hashes only in its production database.
+
+## Owner-operated preparation and release
+
+These steps require separately authorised provisioning and deployment. None was performed as part of the local implementation.
+
+1. In Neon, create a **new project**, PostgreSQL **17**, in a region near the Render service (Frankfurt for this Blueprint). Create a fresh database named `nimclaim_mainnet`. Keep its direct owner URI and endpoint separate from TESTNET. Enable a history window appropriate to the campaign and plan a restore exercise on an isolated branch. Do not clone staging, import SQLite, or seed acceptance campaigns. [Neon database access](https://neon.com/docs/manage/database-access) · [Neon history window](https://neon.com/docs/postgres/backup-restore/history-window)
+2. Using the new database's owner connection, create the dedicated runtime role **through SQL**. Console-created roles may have `neon_superuser`, which runtime startup rejects. Set a fresh, high-entropy password via an interactive `psql` `\password nimclaim_app` prompt over verified TLS; store it securely. Do not embed a password in SQL history or command-line arguments.
+
+   ```sql
+   CREATE ROLE nimclaim_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+     NOINHERIT NOREPLICATION NOBYPASSRLS;
+   ```
+
+3. From the repository root, install dependencies and prepare `.local/mainnet/admin.env` and `.local/mainnet/runtime.env` as ignored regular files, mode `0600`, under a private `.local/mainnet` directory. Do not use symlinks. Both files use the production settings above (`NODE_VERSION` and `PORT` are optional locally). The admin file uses **`DIRECT_DATABASE_URL`** with the new database owner and the direct hostname **in place of** `DATABASE_URL`. The runtime file has only the pooled `DATABASE_URL` with the restricted role and no owner secrets. If the role is not listed in the Neon Connect dialog, use the same endpoint/DB from the owner URI, substitute the URL-encoded runtime credentials, and add `-pooler` to the endpoint ID. [Neon pooled connection strings](https://neon.com/docs/connect/connection-pooling)
+
+   ```sh
+   npm ci --include=dev
+   umask 077
+   mkdir -p .local/mainnet
+   # Create the two protected .env files described above with an editor.
+   npm run mainnet:credentials
+   npm run mainnet:migrate -- .local/mainnet/admin.env
+   npm run mainnet:bootstrap -- .local/mainnet/admin.env .local/mainnet/credentials.json
+   npm run mainnet:grants -- .local/mainnet/admin.env
+   npm run mainnet:verify -- .local/mainnet/runtime.env
+   ```
+
+   `mainnet:credentials` saves a new organiser password and its salted hash in a protected file without printing them. Put the password in a password manager. `bootstrap` saves the hash in the database once and refuses overwrite. Keep direct credentials and the organiser file off Render. `mainnet:verify` checks the **pooled** runtime identity, TLS, migration checksums, schema, organiser and exact privileges without writing. Runtime can write claim and wallet-signature records but cannot read or modify payment tables.
+
+4. After review and release authorisation, make the reviewed revision available on the remote `feat/mainnet-payouts` branch. In Render, choose **New → Blueprint**, connect the repository and choose that branch. Set **Blueprint Path** to `render.production.yaml`. The plan must contain only the new `nimclaim-mainnet` web service; use a separate Blueprint and leave the staging Blueprint alone. Enter `APP_ORIGIN`, `PRODUCTION_DATABASE_HOST` and the pooled `DATABASE_URL` when prompted. Check the actual assigned hostname; if Render adds a suffix, set the exact origin for this new service before completing release checks. Applying a Blueprint starts deployment even with automatic service deploys off. [Render Blueprint setup](https://render.com/docs/infrastructure-as-code#setup)
+5. Verify `GET /healthz` returns `{"ready":true}` and `GET /api/config` reports `network: "mainnet"`, the exact origin, `staging: false` and `claimsOnly: true`. Confirm TESTNET `/api/config` still reports `testnet`, and production login starts with an empty campaign list. `/healthz` reports process liveness after database startup validation; use `/api/config` or a private signed-in read to check ongoing database availability. Verify the backup history and restore a copy before accepting claims. Keep deployment/recovery scoped to this service and project.
+6. Complete the physical test below **before sharing or submitting the production URL**. For a device trial use a private, production-shaped MAINNET deployment with a separate Neon project, or the newly deployed service with a real campaign and consenting organiser/recipient. Never insert synthetic records into the production database.
+
+This is a one-organiser release. The shared PostgreSQL minute buckets allow 10 login requests and 180 other API requests across all clients; an abusive client can consume a shared bucket. Monitor `429`/`503` rates and database capacity during the competition. Expand access only after load testing and adding suitable edge abuse controls. Plan retention and credential rotation outside the HTTP API. Protect data and backups: they contain wallet addresses, signatures and private campaign records.
+
+## Physical Nimiq Pay acceptance — no spending
+
+**Required before release.** Browser tests use a simulated provider and synthetic keys. They cannot verify the installed Nimiq Pay binary, its injected provider, consent prompts or host cache behaviour. [Nimiq Pay Custom URL and network switch](https://nimiq.dev/mini-apps/development/load-local-mini-app)
+
+1. In Nimiq Pay on each supported mobile platform, select Mainnet, then open the exact production HTTPS URL via **Mini Apps → Custom URL**. A normal browser should show wallet unavailable when asked to connect. Verify the MAINNET label and unpaid notice.
+2. Sign in with the production organiser password, create a real campaign, and tap **Authorize campaign wallet**. Review the native message for `NimClaim/organiser/bind/v1`, the exact origin, network, campaign and Luna amount. Cancel once, then sign. Verify the displayed address matches the signing wallet and persists on reload. This signature records the campaign signer; password/session authentication still controls organiser decisions.
+3. Save a private invitation and open the complete link in Nimiq Pay as the recipient. Verify the campaign amount and expiry. Test account-sharing cancellation and message-signing cancellation; neither should create a claim. Connect and approve a `NimClaim/claim/v1` message. Compare the saved server-derived address to the actual signer. Reopen the link and verify no second claim can be made.
+4. With a fresh invitation, verify the wrong network and account changes cannot silently submit a stale signing request. Switch to Testnet and reload; the MAINNET connection must fail closed. Verify a wallet change before or during signing is handled or causes the host to reload; reconnect before signing again. Record the OS and Nimiq Pay version and keep private identifiers out of screenshots.
+5. Approve the real pending claim. Confirm the organiser and recipient show it as approved and unpaid after refresh. There should be no payment request, hash input, payment button, or paid receipt. No funded account or transfer is required. If a transfer confirmation appears, reject it and stop the release check.
+
+## Why payment is blocked
+
+The [Nimiq provider API](https://nimiq.dev/mini-apps/api-reference/nimiq-provider#sendbasictransaction) can ask its native host to send NIM with user confirmation. It returns a hash and accepts no sender parameter. Clearing the SDK account cache does not establish that the host returned fresh accounts; the reviewed host can retain old account/HTLC context. A later read-only RPC check could reject a mismatched sender, but cannot undo the transfer. `Payments.gate()` still rejects mainnet on the SQLite payout path. The PostgreSQL production runtime has neither a payout execution route nor payment table privileges.
+
+An external-payment verifier would require a separately reviewed flow: bind an organiser-authorised settlement intent to the immutable approved claim, an expected funding sender and a unique on-chain reference; require trusted read-only mainnet RPC to verify exact sender, recipient and Luna value, successful canonical inclusion and finality; then atomically store immutable evidence and reject reused hashes. The existing SQLite testnet HTLC verifier is not an external mainnet settlement verifier. Until a compatible wallet path, trusted RPC and settlement implementation are validated, a hash cannot change the claim state. See [mainnet spending blockers](MAINNET-READINESS.md).

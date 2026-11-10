@@ -1,0 +1,35 @@
+# Preparation only. Separate Blueprint; never sync this over the staging Blueprint.
+# PostgreSQL is a separately provisioned Neon PostgreSQL 17 project/database.
+services:
+  - type: web
+    name: nimclaim-mainnet
+    runtime: node
+    plan: 0.5c-512mb
+    region: frankfurt
+    branch: feat/mainnet-payouts
+    numInstances: 1
+    autoDeployTrigger: "off"
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm run start:mainnet
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: NODE_ENV
+        value: production
+      - key: NIMCLAIM_PRODUCTION
+        value: "1"
+      - key: NETWORK
+        value: mainnet
+      - key: SPENDING_ENABLED
+        value: "false"
+      - key: MAX_PAYMENT_LUNA
+        value: "0"
+      - key: PAYMENT_FEE_LUNA
+        value: "0"
+      - key: APP_ORIGIN
+        sync: false
+      - key: PRODUCTION_DATABASE_HOST
+        sync: false
+      - key: DATABASE_URL
+        sync: false

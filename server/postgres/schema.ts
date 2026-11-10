@@ -9,8 +9,8 @@ import contract from "./schema-contract.json" with { type: "json" };
 export const migrationDirectory = fileURLToPath(
   new URL("./migrations/", import.meta.url),
 );
-export function migrationPlan() {
-  const files = readdirSync(migrationDirectory)
+export function migrationPlan(directory = migrationDirectory) {
+  const files = readdirSync(directory)
     .filter((f) => /^\d{3}_[a-z_]+\.sql$/.test(f))
     .sort();
   if (!files.length) throw new Error("Missing migration files");
@@ -20,7 +20,7 @@ export function migrationPlan() {
     return {
       version,
       checksum: createHash("sha256")
-        .update(readFileSync(`${migrationDirectory}/${file}`))
+        .update(readFileSync(`${directory}/${file}`))
         .digest("hex"),
     };
   });
@@ -44,7 +44,15 @@ export async function schemaHash(c: PoolClient) {
   return createHash("sha256").update(JSON.stringify(shape)).digest("hex");
 }
 
-export async function verifySchema(pool: Pool, requireOrganiser = true) {
+export async function verifySchema(
+  pool: Pool,
+  requireOrganiser = true,
+  identity = {
+    network: "testnet",
+    deployment: "isolated-neon-testnet-staging-v1",
+    directory: migrationDirectory,
+  },
+) {
   await transaction(pool, async (c) => {
     await c.query("SET TRANSACTION READ ONLY");
     const version = (await c.query("SHOW server_version_num")).rows[0]
@@ -56,7 +64,10 @@ export async function verifySchema(pool: Pool, requireOrganiser = true) {
         "SELECT version,checksum FROM public.schema_migrations ORDER BY version",
       )
     ).rows;
-    if (JSON.stringify(applied) !== JSON.stringify(migrationPlan()))
+    if (
+      JSON.stringify(applied) !==
+      JSON.stringify(migrationPlan(identity.directory))
+    )
       throw new Error("Missing or incorrect schema migrations");
     if ((await schemaHash(c)) !== contract.sha256)
       throw new Error("Schema differs from reviewed migrations");
@@ -66,8 +77,8 @@ export async function verifySchema(pool: Pool, requireOrganiser = true) {
     if (
       JSON.stringify(settings) !==
       JSON.stringify([
-        { key: "deployment", value: "isolated-neon-testnet-staging-v1" },
-        { key: "network", value: "testnet" },
+        { key: "deployment", value: identity.deployment },
+        { key: "network", value: identity.network },
       ])
     )
       throw new Error("Wrong staging identity/network");

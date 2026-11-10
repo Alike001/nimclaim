@@ -37,7 +37,42 @@ const updates: Record<string, string[]> = {
   payment_attempts: ["state", "reason", "updated"],
 };
 
-export async function verifyRuntimeRole(pool: Pool) {
+export async function verifyRuntimeRole(pool: Pool, claimsOnlyMainnet = false) {
+  const allowedReads: Record<string, true | string[]> = {
+    ...reads,
+    ...(claimsOnlyMainnet ? { organiser_challenges: true as const } : {}),
+  };
+  const allowedInserts: Record<string, true | string[]> = {
+    ...inserts,
+    ...(claimsOnlyMainnet
+      ? {
+          organiser_challenges: [
+            "id",
+            "campaign_id",
+            "session_hash",
+            "purpose",
+            "message",
+            "expires",
+          ],
+          campaign_wallets: true as const,
+        }
+      : {}),
+  };
+  const allowedUpdates: Record<string, string[]> = {
+    ...updates,
+    ...(claimsOnlyMainnet ? { organiser_challenges: ["used"] } : {}),
+  };
+  if (claimsOnlyMainnet) {
+    for (const table of [
+      "payment_intents",
+      "payment_attempts",
+      "payment_events",
+    ]) {
+      delete allowedReads[table];
+      delete allowedInserts[table];
+      delete allowedUpdates[table];
+    }
+  }
   await transaction(pool, async (c) => {
     await c.query("SET TRANSACTION READ ONLY");
     const role = (
@@ -82,15 +117,16 @@ export async function verifyRuntimeRole(pool: Pool) {
       WHERE n.nspname='public' AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped`)
     ).rows;
     for (const row of columns) {
-      const ins = inserts[row.relname];
+      const ins = allowedInserts[row.relname];
       if (
         row.sel !==
-          (reads[row.relname] === true ||
-            (Array.isArray(reads[row.relname]) &&
-              (reads[row.relname] as string[]).includes(row.attname))) ||
+          (allowedReads[row.relname] === true ||
+            (Array.isArray(allowedReads[row.relname]) &&
+              (allowedReads[row.relname] as string[]).includes(row.attname))) ||
         row.ins !==
           (ins === true || (Array.isArray(ins) && ins.includes(row.attname))) ||
-        row.upd !== (updates[row.relname]?.includes(row.attname) ?? false) ||
+        row.upd !==
+          (allowedUpdates[row.relname]?.includes(row.attname) ?? false) ||
         row.ref ||
         row.delegation
       )

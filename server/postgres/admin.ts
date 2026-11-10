@@ -7,7 +7,11 @@ import { transaction } from "./db.js";
 export const migrationDirectory = fileURLToPath(
   new URL("./migrations/", import.meta.url),
 );
-export async function migrate(pool: Pool, directory = migrationDirectory) {
+export async function migrate(
+  pool: Pool,
+  directory = migrationDirectory,
+  deployment = "isolated-neon-testnet-staging-v1",
+) {
   await transaction(pool, async (client) => {
     await client.query("SELECT pg_advisory_xact_lock(786324109)");
     const tables = (
@@ -21,7 +25,7 @@ export async function migrate(pool: Pool, directory = migrationDirectory) {
       const marker = await client.query(
         "SELECT value FROM settings WHERE key='deployment'",
       );
-      if (marker.rows[0]?.value !== "isolated-neon-testnet-staging-v1")
+      if (marker.rows[0]?.value !== deployment)
         throw new Error("Wrong staging database");
     }
     await client.query(
@@ -56,18 +60,25 @@ export async function migrate(pool: Pool, directory = migrationDirectory) {
     }
   });
 }
-export async function bootstrap(pool: Pool, hash: string) {
+export async function bootstrap(
+  pool: Pool,
+  hash: string,
+  identity = {
+    network: "testnet",
+    deployment: "isolated-neon-testnet-staging-v1",
+  },
+) {
   if (!/^[a-f0-9]{64}:[a-f0-9]{128}$/.test(hash))
     throw new Error("Invalid staging organiser hash");
   await transaction(pool, async (c) => {
     await c.query("SELECT pg_advisory_xact_lock(786324109)");
     const settings = (await c.query("SELECT key,value FROM settings")).rows;
     if (
-      !settings.some((r) => r.key === "network" && r.value === "testnet") ||
       !settings.some(
-        (r) =>
-          r.key === "deployment" &&
-          r.value === "isolated-neon-testnet-staging-v1",
+        (r) => r.key === "network" && r.value === identity.network,
+      ) ||
+      !settings.some(
+        (r) => r.key === "deployment" && r.value === identity.deployment,
       )
     )
       throw new Error("Wrong staging identity/network");

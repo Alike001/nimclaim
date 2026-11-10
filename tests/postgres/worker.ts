@@ -16,10 +16,13 @@ const pool = createPool({
   max: 3,
 });
 try {
-  const app = await startPostgresStaging(
-    pool,
-    process.env.NIMCLAIM_PG_TEST_ORIGIN!,
-  );
+  const { startPostgresMainnet } =
+    await import("../../server/postgres/mainnet.js");
+  const start =
+    process.env.NIMCLAIM_PG_TEST_MAINNET === "1"
+      ? startPostgresMainnet
+      : startPostgresStaging;
+  const app = await start(pool, process.env.NIMCLAIM_PG_TEST_ORIGIN!);
   app.gateway.listen(0, "127.0.0.1", () =>
     process.send?.({
       port: (app.gateway.address() as { port: number }).port,
