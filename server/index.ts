@@ -1,5 +1,7 @@
 import { HttpRpc } from "./rpc.js";
 import { createApp } from "./app.js";
+if (process.env.NIMCLAIM_PRODUCTION !== undefined)
+  throw new Error("MAINNET production must use npm run start:mainnet");
 if (
   process.env.NIMCLAIM_STAGING === "1" ||
   process.env.RENDER === "true" ||

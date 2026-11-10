@@ -1,4 +1,6 @@
-# Mainnet readiness: NO-GO
+# Mainnet spending: NO-GO
+
+A separate [MAINNET claims deployment](RENDER-MAINNET.md) is prepared for signed campaigns and claims with payments disabled. It still needs the physical no-spend Nimiq Pay acceptance test before release. This document concerns enabling spending.
 
 **Mainnet spending is explicitly blocked in `Payments.gate()` even when every configurable gate passes.** `SPENDING_ENABLED=false` remains the safe configuration. No mainnet spending, environment change, deployment or real transaction is authorized by this review.
 

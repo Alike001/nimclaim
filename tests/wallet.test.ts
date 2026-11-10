@@ -246,3 +246,33 @@ for (const failure of ["before", "sign", "after"] as const) {
     }
   });
 }
+
+test("MAINNET signing accepts the exact origin and rejects host network changes during the prompt", async () => {
+  const restore = installHost();
+  const mainnetMessage = JSON.stringify({
+    domain: "NimClaim/claim/v1",
+    network: "mainnet",
+    origin,
+  });
+  try {
+    (window as any).nimiqPay.network = "mainnet";
+    const stable = fakeProvider(["wallet-1"]);
+    await signChallenge(stable.provider, mainnetMessage, "mainnet", "wallet-1");
+    assert.equal(stable.signs, 1);
+    const changed = fakeProvider(["wallet-1"], async () => {
+      (window as any).nimiqPay.network = "testnet";
+      return { publicKey: "synthetic", signature: "synthetic" };
+    });
+    await assert.rejects(
+      signChallenge(changed.provider, mainnetMessage, "mainnet", "wallet-1"),
+      /network changed/,
+    );
+    assert.equal(changed.listenerCount(), 0);
+    await assert.rejects(
+      signChallenge(stable.provider, mainnetMessage, "mainnet", "wallet-1"),
+      /network changed/,
+    );
+  } finally {
+    restore();
+  }
+});

@@ -88,11 +88,13 @@ export function CampaignWallet({
   campaignId,
   wallet,
   gate,
+  claimsOnly,
   reload,
 }: {
   campaignId: string;
   wallet: { address: string } | null;
   gate: PaymentGate;
+  claimsOnly?: boolean;
   reload: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false),
@@ -127,7 +129,9 @@ export function CampaignWallet({
   }
   return (
     <section className="panel">
-      <h2>Organiser payout wallet</h2>
+      <h2>
+        {claimsOnly ? "Organiser signing wallet" : "Organiser payout wallet"}
+      </h2>
       {wallet ? (
         <>
           <p>This campaign is permanently authorized to:</p>
@@ -137,8 +141,10 @@ export function CampaignWallet({
         <>
           <p>
             Authorize a signing wallet for this campaign. This is immutable and
-            sends no funds. A signing address does not establish the account
-            Nimiq Pay will use for payments.
+            sends no funds.{" "}
+            {claimsOnly
+              ? "It records which wallet signed for this campaign."
+              : "A signing address does not establish the account Nimiq Pay will use for payments."}
           </p>
           <button disabled={busy} onClick={bind}>
             {busy ? "Waiting for wallet…" : "Authorize campaign wallet"}
