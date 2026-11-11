@@ -6,7 +6,7 @@ import { createPool, neonConnection } from "./db.js";
 import { verifySchema } from "./schema.js";
 import { verifyRuntimeRole } from "./permissions.js";
 import { PostgresStore } from "./store.js";
-import { HttpRpc, type Rpc } from "../rpc.js";
+import { FailoverRpc, HttpRpc, type Rpc } from "../rpc.js";
 import { createPostgresApp } from "./app.js";
 import { stagingGateway, stagingRoute } from "../staging-gateway.js";
 
@@ -40,26 +40,42 @@ export function mainnetConfig(env: NodeJS.ProcessEnv, administrative = false) {
     throw new Error(
       "Unsafe MAINNET claims configuration; spending must remain disabled",
     );
-  let readonlyRpcUrl: string | undefined;
-  if (env.NIMIQ_READONLY_RPC_URL !== undefined) {
-    try {
-      const rpcUrl = new URL(env.NIMIQ_READONLY_RPC_URL);
-      if (
-        rpcUrl.protocol !== "https:" ||
-        rpcUrl.username ||
-        rpcUrl.password ||
-        rpcUrl.hash ||
-        rpcUrl.search ||
-        rpcUrl.pathname !== "/"
-      )
-        throw new Error();
-      readonlyRpcUrl = rpcUrl.origin;
-    } catch {
-      throw new Error(
-        "NIMIQ_READONLY_RPC_URL must be an HTTPS RPC origin without credentials or path",
-      );
-    }
-  }
+  if (
+    env.NIMIQ_READONLY_RPC_URLS !== undefined &&
+    env.NIMIQ_READONLY_RPC_URL !== undefined
+  )
+    throw new Error(
+      "Set only NIMIQ_READONLY_RPC_URLS (comma-separated) or the legacy single URL, not both.",
+    );
+  const rawRpcUrls =
+    env.NIMIQ_READONLY_RPC_URLS ?? env.NIMIQ_READONLY_RPC_URL ?? "";
+  const readonlyRpcUrls = [
+    ...new Set(
+      rawRpcUrls
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .map((value) => {
+          try {
+            const rpcUrl = new URL(value);
+            if (
+              rpcUrl.protocol !== "https:" ||
+              rpcUrl.username ||
+              rpcUrl.password ||
+              rpcUrl.hash ||
+              rpcUrl.search ||
+              rpcUrl.pathname !== "/"
+            )
+              throw new Error();
+            return rpcUrl.origin;
+          } catch {
+            throw new Error(
+              "NIMIQ_READONLY_RPC_URLS must contain HTTPS RPC origins without credentials or paths.",
+            );
+          }
+        }),
+    ),
+  ];
   let origin: string;
   try {
     const url = new URL(env.APP_ORIGIN ?? "");
@@ -98,7 +114,7 @@ export function mainnetConfig(env: NodeJS.ProcessEnv, administrative = false) {
     throw new Error(
       "Separate pinned MAINNET database and restricted role required",
     );
-  return { origin, runtime, readonlyRpcUrl };
+  return { origin, runtime, readonlyRpcUrls };
 }
 export function mainnetRoute(method: string, path: string) {
   return (
@@ -142,10 +158,12 @@ export async function startPostgresMainnet(
   };
 }
 export async function startMainnetFromEnvironment(env: NodeJS.ProcessEnv) {
-  const { origin, runtime, readonlyRpcUrl } = mainnetConfig(env);
+  const { origin, runtime, readonlyRpcUrls } = mainnetConfig(env);
   const pool = createPool(runtime);
   try {
-    const rpc = readonlyRpcUrl ? new HttpRpc(readonlyRpcUrl) : undefined;
+    const rpc = readonlyRpcUrls.length
+      ? new FailoverRpc(readonlyRpcUrls.map((url) => new HttpRpc(url)))
+      : undefined;
     return await startPostgresMainnet(pool, origin, "./dist", rpc);
   } catch (error) {
     await pool.end();
