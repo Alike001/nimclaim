@@ -52,7 +52,7 @@ I built NimClaim because a reward promise, an approval and a payment are three d
 
 1:25–1:55 — In the organiser workspace, show the claim history and approval decision. On the contributor phone, refresh and show the same status.
 
-1:55–2:25 — Show Approved Rewards, the recipient, exact amount and transaction-hash verification. Submit the 10 NIM hash only after checking it is the correct transfer.
+1:55–2:25 — Show Approved Rewards, the approved/paid/unpaid counts, recipient, exact amount and transaction-hash verification. Submit the 10 NIM hash only after checking it is the correct transfer.
 
 2:25–3:00 — Show Paid · verified on-chain only if the independent checks succeed. Explain that the organiser sent the transfer through Nimiq Pay; NimClaim did not broadcast or custody it. Show the public GitHub repository and live app.
 
