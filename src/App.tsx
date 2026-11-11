@@ -110,8 +110,7 @@ function Landing({
             <span>Verify the wallet.</span>
           </h1>
           <p className="landing-lede">
-            Invite contributors, verify receiving-wallet ownership with Nimiq Pay, and
-            review claims before arranging a separate NIM payment.
+            Use Nimiq Pay signatures to verify wallets and review reward claims.
           </p>
           <div className="landing-actions">
             <a className="landing-primary" href="#organiser-access">
