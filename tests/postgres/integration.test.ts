@@ -110,7 +110,12 @@ async function database(t: { after: Function }, initialize = true) {
   }
   return { name, pool };
 }
-async function worker(name: string, appOrigin = origin, mainnet = false) {
+async function worker(
+  name: string,
+  appOrigin = origin,
+  mainnet = false,
+  rpcConfig?: { sender: string; recipient: string; amount: number; hash: string },
+) {
   const child = spawn(
     process.execPath,
     ["--import", "tsx", "tests/postgres/worker.ts"],
@@ -121,6 +126,15 @@ async function worker(name: string, appOrigin = origin, mainnet = false) {
         NIMCLAIM_PG_TEST_DB: name,
         NIMCLAIM_PG_TEST_ORIGIN: appOrigin,
         NIMCLAIM_PG_TEST_MAINNET: mainnet ? "1" : "0",
+        NIMCLAIM_PG_TEST_RPC: rpcConfig ? "1" : "0",
+        ...(rpcConfig
+          ? {
+              NIMCLAIM_PG_TEST_RPC_SENDER: rpcConfig.sender,
+              NIMCLAIM_PG_TEST_RPC_RECIPIENT: rpcConfig.recipient,
+              NIMCLAIM_PG_TEST_RPC_AMOUNT: String(rpcConfig.amount),
+              NIMCLAIM_PG_TEST_RPC_HASH: rpcConfig.hash,
+            }
+          : {}),
       },
     },
   );
@@ -1788,7 +1802,7 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
     (await organiser.call("/api/auth/verify", login.proof)).status,
     409,
   );
-  const c = await campaign(organiser, 2);
+  const c = await campaign(organiser, 2, "10");
   const challengePath = `/api/campaigns/${c.id}/wallet/challenge`;
   assert.equal((await publicClient.call(challengePath, {})).status, 401);
   assert.equal(
@@ -1863,8 +1877,9 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
   assert.equal(invitationResult.status, 201);
   assert.equal(new URL(invitationResult.body.url).origin, appOrigin);
   const token = new URL(invitationResult.body.url).hash.slice(7);
-  const stale = await proof(publicClient, token);
-  const fresh = await proof(publicClient, token);
+  const contributor = testSigner();
+  const stale = await proof(publicClient, token, contributor);
+  const fresh = await proof(publicClient, token, contributor);
   assert.equal(JSON.parse(fresh.challenge.message).network, "mainnet");
   assert.equal((await publicClient.call("/api/claim", stale.body)).status, 409);
   const result = await publicClient.call("/api/claim", fresh.body);
@@ -1903,18 +1918,28 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
       {},
     );
     assert.ok([403, 404].includes(attempt.status));
+    assert.equal(
+      (
+        await caller.call(`/api/claims/${claimId}/payment/verify`, {
+          hash: "a".repeat(64),
+        })
+      ).status,
+      503,
+    );
     assert.ok(
       [403, 404].includes(
-        (
-          await caller.call(`/api/payments/${claimId}/reconcile`, {
-            hash: "a".repeat(64),
-          })
-        ).status,
+        (await caller.call(`/api/payments/${claimId}/dispatch`, {})).status,
       ),
     );
   }
   await api.stop();
-  const restarted = await worker(name, appOrigin, true);
+  const paymentHash = "a".repeat(64);
+  const restarted = await worker(name, appOrigin, true, {
+    sender: owner.address,
+    recipient: contributor.address,
+    amount: c.amount,
+    hash: paymentHash,
+  });
   const existing = client(restarted.port, appOrigin);
   assert.equal(
     (
@@ -1931,6 +1956,34 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
   assert.equal(detail.claims[0].payment, null);
   assert.equal(detail.paymentGate.enabled, false);
   assert.equal(detail.claimsOnly, true);
+  assert.equal(detail.manualPaymentVerification, true);
+  const verified = await existing.call(
+    `/api/claims/${claimId}/payment/verify`,
+    { hash: paymentHash },
+  );
+  assert.equal(verified.status, 200);
+  assert.equal(verified.body.claim.payment.state, "CONFIRMED");
+  assert.equal(verified.body.claim.payment.receipt.source, "external");
+  assert.equal(verified.body.claim.payment.receipt.amount, 1_000_000);
+  assert.equal(verified.body.claim.payment.receipt.sender, owner.address);
+  assert.equal(verified.body.claim.payment.receipt.recipient, contributor.address);
+  assert.match(verified.body.claim.payment.explorerUrl, /^https:\/\/nimiq\.watch\/#/);
+  assert.equal(
+    (
+      await existing.call(`/api/claims/${claimId}/payment/verify`, {
+        hash: paymentHash,
+      })
+    ).status,
+    200,
+  );
+  const paidDetail = (await existing.call(`/api/campaigns/${c.id}`)).body;
+  assert.equal(paidDetail.claims[0].status, "payment-ready");
+  assert.equal(paidDetail.claims[0].payment.state, "CONFIRMED");
+  assert.equal(paidDetail.claims[0].history.at(-1).status, "paid");
+  assert.equal(
+    (await pool.query("SELECT count(*) AS n FROM manual_payment_receipts")).rows[0].n,
+    1,
+  );
   assert.equal(
     (await pool.query("SELECT count(*) AS n FROM payment_attempts")).rows[0].n,
     0,
@@ -1938,9 +1991,14 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
   const runtime = runtimePool(name);
   await verifyRuntimeRole(runtime, true);
   await assert.rejects(verifyRuntimeRole(runtime)); // production grants cannot silently enter staging
+  assert.equal(
+    (await runtime.query("SELECT count(*) AS n FROM manual_payment_receipts")).rows[0].n,
+    1,
+  );
   for (const sql of [
     "INSERT INTO payment_hashes VALUES ('fake','fake')",
     "SELECT * FROM payment_attempts",
+    "UPDATE manual_payment_receipts SET amount=1",
     "UPDATE settings SET value='testnet'",
     "DELETE FROM campaign_wallets",
     "UPDATE claims SET address='fake'",
