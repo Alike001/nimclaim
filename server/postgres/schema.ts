@@ -51,6 +51,7 @@ export async function verifySchema(
     network: "testnet",
     deployment: "isolated-neon-testnet-staging-v1",
     directory: migrationDirectory,
+    schemaHash: contract.sha256,
   },
 ) {
   await transaction(pool, async (c) => {
@@ -69,7 +70,7 @@ export async function verifySchema(
       JSON.stringify(migrationPlan(identity.directory))
     )
       throw new Error("Missing or incorrect schema migrations");
-    if ((await schemaHash(c)) !== contract.sha256)
+    if ((await schemaHash(c)) !== (identity.schemaHash ?? contract.sha256))
       throw new Error("Schema differs from reviewed migrations");
     const settings = (
       await c.query("SELECT key,value FROM public.settings ORDER BY key")
