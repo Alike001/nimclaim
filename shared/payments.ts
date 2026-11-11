@@ -16,6 +16,7 @@ export interface Intent {
 export interface Receipt {
   hash: string;
   blockNumber: number;
+  validityStartHeight: number;
   blockHash: string;
   macroNumber: number;
   macroHash: string;
@@ -26,6 +27,8 @@ export interface Receipt {
   amount: number;
   fee: number;
   network: Network;
+  /** Set only when NimClaim verifies a transfer sent separately through Nimiq Pay. */
+  source?: "external";
 }
 export interface PaymentGate {
   enabled: boolean;

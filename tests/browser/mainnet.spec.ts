@@ -76,7 +76,10 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     const response = await route.fetch();
     const body = await response.json();
     if (url.pathname === "/api/config" || (body.campaign && body.paymentGate))
-      await route.fulfill({ response, json: { ...body, claimsOnly: true } });
+      await route.fulfill({
+        response,
+        json: { ...body, claimsOnly: true, manualPaymentVerification: false },
+      });
     else await route.fulfill({ response });
   });
   const signer = testSigner();
@@ -121,7 +124,7 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
   ).toBeVisible();
   await expect(
     page.getByText(
-      "MAINNET supports signed claims and organiser review only. NimClaim does not send, track or verify NIM payouts.",
+      "MAINNET payments are sent through Nimiq Pay; NimClaim verifies matching finalized transfers by transaction hash. It never sends or holds NIM.",
       { exact: true },
     ),
   ).toBeVisible();
@@ -161,7 +164,9 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     .click();
   await page.getByRole("button", { name: "Authorize campaign wallet" }).click();
   await expect(
-    page.getByText("This campaign is permanently authorized to:"),
+    page.getByText(
+      "This is the authorised campaign wallet and expected sender for verified reward payments:",
+    ),
   ).toBeVisible();
   await page.getByRole("button", { name: "Create unique invitation" }).click();
   const invitationField = page.getByLabel(
@@ -201,7 +206,7 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     page.getByRole("heading", { name: "Approved rewards" }),
   ).toBeVisible();
   await expect(
-    page.getByText("1 reward approved", { exact: true }),
+    page.getByText("1 approved · 0 paid · 1 unpaid", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Copy settlement details" }),
@@ -218,7 +223,10 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
   expect(csv).toContain(signer.address);
   expect(csv).toContain("0.12345");
   expect(csv).toContain("Approved · unpaid");
-  expect(csv).toContain("External transfer not verified by NimClaim");
+  expect(csv).toContain("No verified payment recorded");
+  await expect(
+    page.getByText(/Read-only MAINNET verification is not configured/),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: /Review.*payment/i }),
   ).toHaveCount(0);
@@ -230,13 +238,10 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     page.getByText("No NIM has been transferred through NimClaim."),
   ).toBeVisible();
   await expect(page.locator(".claim-next-step")).toContainText(
-    "This is an approval, not proof of payment.",
+    "This screen changes to Paid · verified on-chain only after the sender, recipient, amount and finality checks succeed.",
   );
   await expect(page.locator(".claim-next-step")).toContainText(
-    "This status does not update for external transfers",
-  );
-  await expect(page.locator(".claim-next-step")).toContainText(
-    "NimClaim does not hold, send or verify NIM payments.",
+    "NimClaim never sends or holds NIM.",
   );
   expect(
     await page.evaluate(

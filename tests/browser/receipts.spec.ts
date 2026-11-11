@@ -33,6 +33,7 @@ for (const state of [
       ? {
           hash: "a".repeat(64),
           blockNumber: 101,
+          validityStartHeight: 100,
           blockHash: "c".repeat(64),
           macroNumber: 128,
           macroHash: "b".repeat(64),

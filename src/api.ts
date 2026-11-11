@@ -48,7 +48,7 @@ export const statusLabel = (status: string) =>
     "payment-ready": "Payment-ready · unpaid",
     rejected: "Rejected",
     expired: "Expired",
-    paid: "Paid · finalized",
+    paid: "Paid · verified on-chain",
     failed: "Failed · unpaid",
     submitting: "Submission pending",
     unknown: "Outcome unknown",

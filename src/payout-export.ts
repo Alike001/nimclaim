@@ -1,9 +1,11 @@
 import type { Campaign, Claim } from "./api";
 
+export function getApprovedClaims(claims: Claim[]): Claim[] {
+  return claims.filter((claim) => claim.status === "payment-ready");
+}
+
 export function getApprovedUnpaidClaims(claims: Claim[]): Claim[] {
-  return claims.filter(
-    (claim) => claim.status === "payment-ready" && !claim.payment,
-  );
+  return getApprovedClaims(claims).filter((claim) => !claim.payment);
 }
 
 function canonicalNim(luna: number): string {
@@ -42,7 +44,7 @@ export function buildApprovedRewardsCsv(
       "Settlement status",
       "Approved at (UTC)",
     ],
-    ...getApprovedUnpaidClaims(claims).map((claim) => {
+    ...getApprovedClaims(claims).map((claim) => {
       const approvedAt = [...claim.history]
         .reverse()
         .find((event) => event.status === "payment-ready")?.at;
@@ -53,8 +55,13 @@ export function buildApprovedRewardsCsv(
         claim.address,
         canonicalNim(campaign.amount),
         network.toUpperCase(),
-        "Approved · unpaid",
-        "External transfer not verified by NimClaim",
+        claim.payment?.state === "CONFIRMED" &&
+        claim.payment.receipt?.executionResult === true
+          ? "Paid · verified on-chain"
+          : "Approved · unpaid",
+        claim.payment?.receipt?.source === "external"
+          ? `Verified MAINNET transaction ${claim.payment.receipt.hash}`
+          : "No verified payment recorded",
         approvedAt ? new Date(approvedAt).toISOString() : "",
       ];
     }),
@@ -79,8 +86,15 @@ export function buildPayoutDetails(
     `Network: ${network.toUpperCase()}`,
     `Recipient NIM address: ${claim.address}`,
     `Reward amount: ${canonicalNim(campaign.amount)} NIM`,
-    "Claim status: Approved · unpaid",
-    "Settlement status: External transfer not verified by NimClaim",
-    "Arrange any transfer separately. This text is not proof of payment.",
+    claim.payment?.state === "CONFIRMED" &&
+    claim.payment.receipt?.executionResult === true
+      ? "Claim status: Paid · verified on-chain"
+      : "Claim status: Approved · unpaid",
+    claim.payment?.receipt?.source === "external"
+      ? `Verified transaction: ${claim.payment.receipt.hash}`
+      : "Settlement status: No verified payment recorded",
+    claim.payment?.receipt?.source === "external"
+      ? `Verified at: ${new Date(claim.payment.receipt.verifiedAt).toISOString()}`
+      : "Arrange payment separately through Nimiq Pay, then verify its transaction hash in NimClaim.",
   ].join("\n");
 }

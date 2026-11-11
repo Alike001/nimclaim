@@ -1,8 +1,24 @@
 # Mainnet spending: NO-GO
 
+## Read-only external payment verification
+
+The MAINNET PostgreSQL runtime accepts an organiser-submitted transaction hash
+for an already completed Nimiq Pay transfer. The server derives the expected
+sender from the campaign wallet, recipient from the claim and amount from the
+campaign. It verifies the MAINNET network, Basic account types, exact amount,
+successful canonical block inclusion and following macro-block finality.
+Verified receipts are immutable and transaction hashes are unique across
+claims. A successful check changes the displayed settlement status to
+**Paid · verified on-chain** without changing the immutable approval decision.
+
+This does not enable native wallet broadcasting, escrow, automatic payouts or
+refunds. A transfer made from a different sender wallet will not match the
+campaign's authorised wallet. The public RPC used for the demo is rate-limited
+and has no uptime guarantee; production needs a dedicated trusted node.
+
 The [MAINNET claims deployment](RENDER-MAINNET.md) is live at https://nimclaim-mainnet-smv5.onrender.com. Physical no-spend Nimiq Pay acceptance for organiser access, contributor claims and review was completed on two devices on 11 November 2026. This document concerns enabling spending only.
 
-**Mainnet spending is explicitly blocked in `Payments.gate()` even when every configurable gate passes.** `SPENDING_ENABLED=false` remains the safe configuration. No mainnet spending, environment change, deployment or real transaction is authorized by this review.
+**MAINNET spending is explicitly blocked.** `SPENDING_ENABLED=false` remains the safe configuration. A separate read-only verifier now checks transfers already sent in Nimiq Pay; it does not sign, broadcast, reserve or custody funds. The verifier cannot turn an unconfirmed or mismatched transaction into a paid receipt.
 
 ## Current implementation
 
@@ -25,4 +41,4 @@ Passing automated tests does not resolve these blockers. Existing records, signa
 
 Only `npm start` / `server/index.ts`, using SQLite outside staging/mobile-test mode, implements the native TESTNET payout flow. It remains spending-disabled; a future authorized testnet deployment must resolve the blockers above and satisfy all server gates. This entry point refuses Render, staging and PostgreSQL environment markers.
 
-The active MAINNET Render service runs `npm run start:mainnet` with PostgreSQL + Neon and `NETWORK=mainnet`; it is claim-only and has no payout execution or payment-verification API. The separate TESTNET Render Blueprint runs `npm run start:staging`, requires `NETWORK=testnet` and `SPENDING_ENABLED=false`, and refuses financial routes. Its restricted runtime role cannot create reservations or consume dispatch permits. Preserved payment tables/locks do not constitute an operational payout or reconciliation API. Implementing PostgreSQL payouts is separate work, not a configuration change. See [RENDER-STAGING.md](RENDER-STAGING.md).
+The active MAINNET Render service runs `npm run start:mainnet` with PostgreSQL + Neon and `NETWORK=mainnet`. It has no payout execution or escrow, but it supports read-only verification of an external NIM transfer by transaction hash. The runtime can select and insert immutable manual receipts; it cannot update or delete them. The separate TESTNET Render Blueprint runs `npm run start:staging`, requires `NETWORK=testnet` and `SPENDING_ENABLED=false`, and refuses financial routes. Automated MAINNET spending remains NO-GO. See [RENDER-STAGING.md](RENDER-STAGING.md).

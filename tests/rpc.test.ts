@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { HttpRpc } from "../server/rpc.js";
+import { FailoverRpc, HttpRpc, verifyBasicTransfer } from "../server/rpc.js";
+import { testSigner } from "./helpers.js";
 
 test("RPC adapter only permits read methods and parses official result.data envelopes", async (t) => {
   const methods: string[] = [];
@@ -182,5 +183,253 @@ test("installed core decodes early and timeout resolve proofs with their actual 
   });
   assert.throws(() =>
     HashedTimeLockedContract.proofToPlain(Buffer.from("0100", "hex")),
+  );
+});
+
+test("MAINNET verifies an exact external Basic-to-Basic NIM transfer through canonical inclusion and macro finality", async () => {
+  const sender = testSigner();
+  const recipient = testSigner();
+  const hash = "f".repeat(64);
+  const tx = {
+    hash,
+    from: sender.address,
+    to: recipient.address,
+    fromType: 0,
+    toType: 0,
+    value: 1_000_000,
+    fee: 1000,
+    networkId: 24,
+    validityStartHeight: 100,
+    flags: 0,
+    senderData: "",
+    recipientData: "",
+    blockNumber: 101,
+    executionResult: true,
+    proof: "00",
+  };
+  const calls: string[] = [];
+  const rpc = {
+    async call(method: string, params: unknown[]) {
+      calls.push(method);
+      if (method === "isConsensusEstablished") return true;
+      if (method === "getBlockNumber") return 200;
+      if (method === "getTransactionByHash") return tx;
+      if (method === "getMacroBlockAfter") return 128;
+      if (method === "getBlockByNumber" && params[0] === 200)
+        return {
+          number: 200,
+          hash: "d".repeat(64),
+          network: "MainAlbatross",
+        };
+      if (method === "getBlockByNumber" && params[0] === 128)
+        return {
+          number: 128,
+          hash: "b".repeat(64),
+          network: "MainAlbatross",
+          type: "macro",
+          justification: { sig: "SYNTHETIC_TEST_ONLY" },
+        };
+      if (method === "getBlockByNumber" && params[0] === 101)
+        return {
+          number: 101,
+          hash: "c".repeat(64),
+          network: "MainAlbatross",
+          type: "micro",
+          transactions: [tx],
+        };
+      throw new Error("Unexpected synthetic RPC method");
+    },
+  };
+  const result = await verifyBasicTransfer(
+    rpc,
+    {
+      sender: sender.address,
+      recipient: recipient.address,
+      amount: 1_000_000,
+      network: "mainnet",
+    },
+    hash,
+    1_800_000_000_000,
+  );
+  assert.equal(result.state, "CONFIRMED");
+  assert.equal(result.receipt?.source, "external");
+  assert.equal(result.receipt?.sender, sender.address);
+  assert.equal(result.receipt?.recipient, recipient.address);
+  assert.equal(result.receipt?.amount, 1_000_000);
+  assert.equal(result.receipt?.fee, 1000);
+  assert.equal(result.receipt?.validityStartHeight, 100);
+  assert.equal(result.receipt?.blockNumber, 101);
+  assert.equal(result.receipt?.macroNumber, 128);
+  assert.equal(result.receipt?.executionResult, true);
+  assert.ok(calls.includes("getTransactionByHash"));
+  assert.ok(calls.includes("getMacroBlockAfter"));
+  assert.ok(!calls.some((method) => /send|broadcast|push/i.test(method)));
+});
+
+test("MAINNET external payment verification rejects mismatched payer, recipient, amount and chain", async () => {
+  const sender = testSigner();
+  const recipient = testSigner();
+  const hash = "e".repeat(64);
+  const tx = {
+    hash,
+    from: sender.address,
+    to: recipient.address,
+    fromType: 0,
+    toType: 0,
+    value: 1_000_000,
+    fee: 1000,
+    networkId: 24,
+    validityStartHeight: 100,
+    flags: 0,
+    senderData: "",
+    recipientData: "",
+    blockNumber: 101,
+    executionResult: true,
+    proof: "00",
+  };
+  const rpc = {
+    async call(method: string, params: unknown[]) {
+      if (method === "isConsensusEstablished") return true;
+      if (method === "getBlockNumber") return 200;
+      if (method === "getTransactionByHash") return tx;
+      if (method === "getMacroBlockAfter") return 128;
+      if (method === "getBlockByNumber" && params[0] === 200)
+        return { number: 200, hash: "d".repeat(64), network: "MainAlbatross" };
+      if (method === "getBlockByNumber" && params[0] === 128)
+        return {
+          number: 128,
+          hash: "b".repeat(64),
+          network: "MainAlbatross",
+          type: "macro",
+          justification: { sig: "SYNTHETIC_TEST_ONLY" },
+        };
+      if (method === "getBlockByNumber" && params[0] === 101)
+        return {
+          number: 101,
+          hash: "c".repeat(64),
+          network: "MainAlbatross",
+          type: "micro",
+          transactions: [tx],
+        };
+      throw new Error("Unexpected synthetic RPC method");
+    },
+  };
+  await assert.rejects(
+    verifyBasicTransfer(
+      rpc,
+      {
+        sender: testSigner().address,
+        recipient: recipient.address,
+        amount: 1_000_000,
+        network: "mainnet",
+      },
+      hash,
+      Date.now(),
+    ),
+    /does not match/,
+  );
+  await assert.rejects(
+    verifyBasicTransfer(
+      rpc,
+      {
+        sender: sender.address,
+        recipient: recipient.address,
+        amount: 10_000_000,
+        network: "mainnet",
+      },
+      hash,
+      Date.now(),
+    ),
+    /does not match/,
+  );
+});
+
+test("MAINNET failed execution or missing finality never becomes a paid receipt", async () => {
+  const sender = testSigner();
+  const recipient = testSigner();
+  const hash = "c".repeat(64);
+  const tx = {
+    hash,
+    from: sender.address,
+    to: recipient.address,
+    fromType: 0,
+    toType: 0,
+    value: 1_000_000,
+    fee: 1000,
+    networkId: 24,
+    validityStartHeight: 100,
+    flags: 0,
+    senderData: "",
+    recipientData: "",
+    blockNumber: 101,
+    executionResult: false,
+    proof: "00",
+  };
+  let finality = true;
+  const rpc = {
+    async call(method: string, params: unknown[]) {
+      if (method === "isConsensusEstablished") return true;
+      if (method === "getBlockNumber") return 200;
+      if (method === "getTransactionByHash") return tx;
+      if (method === "getMacroBlockAfter") return 128;
+      if (method === "getBlockByNumber" && params[0] === 200)
+        return { number: 200, hash: "d".repeat(64), network: "MainAlbatross" };
+      if (method === "getBlockByNumber" && params[0] === 128)
+        return {
+          number: 128,
+          hash: "b".repeat(64),
+          network: "MainAlbatross",
+          type: "macro",
+          justification: finality ? { sig: "SYNTHETIC_TEST_ONLY" } : {},
+        };
+      if (method === "getBlockByNumber" && params[0] === 101)
+        return {
+          number: 101,
+          hash: "c".repeat(64),
+          network: "MainAlbatross",
+          type: "micro",
+          transactions: [tx],
+        };
+      throw new Error("Unexpected synthetic RPC method");
+    },
+  };
+  const expected = {
+    sender: sender.address,
+    recipient: recipient.address,
+    amount: 1_000_000,
+    network: "mainnet" as const,
+  };
+  const failed = await verifyBasicTransfer(rpc, expected, hash, Date.now());
+  assert.equal(failed.state, "FAILED");
+  assert.equal(failed.receipt, undefined);
+  finality = false;
+  const unknown = await verifyBasicTransfer(rpc, expected, hash, Date.now());
+  assert.equal(unknown.state, "UNKNOWN");
+  assert.equal(unknown.receipt, undefined);
+});
+
+test("read-only RPC failover tries the next endpoint and never exposes broadcast methods", async () => {
+  const calls: string[] = [];
+  const first = {
+    async call(method: string) {
+      calls.push(`first:${method}`);
+      throw new Error("HTTP 503");
+    },
+  };
+  const second = {
+    async call(method: string) {
+      calls.push(`second:${method}`);
+      return true;
+    },
+  };
+  const rpc = new FailoverRpc([first, second]);
+  assert.equal(await rpc.call("isConsensusEstablished", []), true);
+  assert.deepEqual(calls, [
+    "first:isConsensusEstablished",
+    "second:isConsensusEstablished",
+  ]);
+  await assert.rejects(
+    rpc.call("sendRawTransaction", ["deadbeef"]),
+    /Only read-only Nimiq RPC methods are allowed/,
   );
 });

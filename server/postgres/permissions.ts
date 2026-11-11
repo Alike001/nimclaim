@@ -45,6 +45,7 @@ export async function verifyRuntimeRole(pool: Pool, claimsOnlyMainnet = false) {
           organiser_challenges: true as const,
           organisers: true as const,
           organiser_auth_challenges: true as const,
+          manual_payment_receipts: true as const,
         }
       : {}),
   };
@@ -63,6 +64,7 @@ export async function verifyRuntimeRole(pool: Pool, claimsOnlyMainnet = false) {
           organisers: ["id", "wallet_address", "public_key", "created"],
           organiser_auth_challenges: ["id", "message", "expires"],
           campaign_wallets: true as const,
+          manual_payment_receipts: true as const,
         }
       : {}),
   };

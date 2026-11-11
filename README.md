@@ -1,10 +1,10 @@
 # NimClaim
 
-**Signed claims. Clear reward decisions.**
+**Signed claims. Verified NIM rewards.**
 
 A Nimiq Pay Mini App for community organisers to invite contributors, verify wallet ownership, review reward claims and prepare approved rewards for payment. Built as an independent first vertical slice for the Nimiq Mini Apps Competition Cycle III, Pay category.
 
-**MAINNET claims and organiser reviews are live at [nimclaim-mainnet-smv5.onrender.com](https://nimclaim-mainnet-smv5.onrender.com). Mainnet spending, escrow and automated payment verification remain blocked.** The SQLite path implements gated TESTNET HTLC payouts; spending stays disabled by default. The local organiser wallet signs authorisation; the independently checked remote HTLC funds the reward. Physical TESTNET payout validation is still pending; the active MAINNET release is claims-only. `payment-ready` means approved and unpaid; only independently verified, finalized successful execution produces a paid receipt. Campaign amounts are commitments, not escrowed funds. No chain receipts, payments, AI features or populated demo campaigns are fabricated. Nimiq native chain data is public.
+**MAINNET claims and organiser reviews are live at [nimclaim-mainnet-smv5.onrender.com](https://nimclaim-mainnet-smv5.onrender.com).** NimClaim does not send or escrow NIM. Organisers send rewards through Nimiq Pay and submit a transaction hash for read-only MAINNET verification. A receipt is recorded only after the authorised campaign-wallet sender, claim recipient, exact Luna amount, successful canonical execution and macro-block finality match. The public RPC is rate-limited; use a dedicated node for production. The separate SQLite HTLC payout path is TESTNET-only and spending remains disabled. Campaign amounts are commitments, not escrowed funds. Nimiq chain data is public.
 
 ## Run locally
 
@@ -81,13 +81,13 @@ Use [the separate production Blueprint](render.production.yaml) and [the MAINNET
 
 Two separate Nimiq Pay devices completed the following production workflow: organiser wallet registration, campaign creation, immutable organiser signing-wallet authorisation, private invitation, contributor wallet signature, claim submission, organiser approval and matching **Approved · unpaid** status/history on both devices. The organiser also tested copyable recipient details and downloaded the approved-rewards CSV. These are user-observed physical-device results; the automated browser suite separately uses synthetic signatures. No automatic payout was executed by NimClaim.
 
-The organiser subsequently reported sending **10 NIM separately from Nimiq Pay** to the approved contributor. This external transfer is **user-reported, not verified by NimClaim**; a transaction hash, matching amount/addresses and finality must be checked independently before describing it as confirmed on-chain. The app intentionally retains its unverified-payment status, including after an outside transfer.
+The organiser subsequently reported sending **10 NIM separately from Nimiq Pay** to the approved contributor. The transaction hash has not yet been supplied. NimClaim will retain Approved · unpaid until the hash passes the same server-side sender, recipient, amount, execution and finality checks.
 
 Release and submission guide: [Cycle III submission notes](docs/CYCLE3-SUBMISSION.md).
 
 ### Approved reward handoff on MAINNET
 
-The MAINNET organiser campaign page includes an **Approved rewards** handoff for claims that have been approved and have no payment record. Organisers can copy a recipient address, copy the campaign/claim/network/amount details, or download a CSV containing the approved-unpaid reward list and approval timestamps. The export uses exact NIM decimal precision and is a coordination aid only, including when an organiser has already sent an external transfer: it is not an escrow ledger, transfer instruction, payment receipt or proof of settlement. NimClaim does not initiate, reserve, record or verify external MAINNET transfers. Contributors see an explicit explanation that approval records the organiser's decision, not a payment. Do not describe an approved reward as paid unless a separately reviewed, independently verified settlement capability is implemented.
+The MAINNET organiser page lists all **Approved rewards**, including verified-paid and unpaid claims. Organisers can copy recipient details, submit a transaction hash for verification, and export a CSV with each reward's status. The server checks the authorised campaign wallet, exact recipient and amount, successful canonical inclusion and macro-block finality. Verified receipts are immutable and transaction hashes cannot be reused. NimClaim never initiates or custodies the transfer; organisers send NIM through Nimiq Pay. Contributors see the verified payment status after refresh.
 
 ## PostgreSQL staging path
 
@@ -97,7 +97,7 @@ On Render, the exact origin comes from the platform-supplied `RENDER_EXTERNAL_UR
 
 There is no SQLite fallback. The regular SQLite start command refuses Render or a Postgres URL. Local setup, SQLite data, credentials and development commands remain independent.
 
-Versioned SQL migrations preserve campaign/invitation/claim/session and durable payment tables, safe integer Luna values, uniqueness, append-only history, immutable intents and permanent attempt locks. PostgreSQL row locks protect invitation slots and challenge consumption across processes. All staging wallet/payment/reconciliation routes are denied and spending cannot be enabled. This is a claim-only TESTNET service, not a Postgres payment execution implementation or mainnet approval.
+Versioned SQL migrations preserve campaign, invitation, claim, session and payment evidence. The MAINNET runtime has a read-only external-transfer verifier and an immutable receipt table; PostgreSQL row locks protect invitation slots and challenge consumption across processes. The separate TESTNET staging runtime remains claims-only and denies wallet, payment and reconciliation routes. Neither runtime exposes automatic MAINNET spending or escrow.
 
 Run `npm run test:postgres` for real disposable PostgreSQL integration tests, including concurrent API processes, migration rollback, process/database restarts and encrypted `pg_dump` restoration. It requires Docker and a local `postgres:17-alpine` image (`docker pull postgres:17-alpine` if missing). It creates only labelled loopback test containers/databases and removes their volumes; it never reads `.env` or connects to Neon. `npm run check:staging` runs the original regression/build/browser suite followed by these tests. See [the complete free Render + Neon setup, limits and readiness report](docs/RENDER-STAGING.md).
 
@@ -125,7 +125,7 @@ These optional test overrides coordinate Playwright, its isolated API and Vite's
 
 ## Native payout gate
 
-Only the separate SQLite runtime (`npm start` → `server/index.ts`) implements the TESTNET payout flow; it remains spending-disabled and subject to host-cache/device release blockers. The Render + Neon PostgreSQL path (`npm run start:staging`) is financially disabled and cannot be enabled for payouts through flags. See [runtime paths and capability-field meanings](docs/PAYMENTS.md#runtime-and-deployment-paths) and the current [mainnet NO-GO](docs/MAINNET-READINESS.md).
+The separate SQLite runtime (`npm start` → `server/index.ts`) contains the TESTNET HTLC payout research path; spending remains disabled. The Render + Neon MAINNET path (`npm run start:mainnet`) supports claims and read-only verification of transfers already sent in Nimiq Pay. It has no broadcast, escrow or automatic payout route. See [runtime paths and capability-field meanings](docs/PAYMENTS.md#runtime-and-deployment-paths) and [MAINNET spending boundaries](docs/MAINNET-READINESS.md).
 
 The existing adapter calls `sendBasicTransaction({recipient,value,fee})`. The organiser signs a session-bound challenge covering the exact HTLC, local organiser, cosigner, contributor, amount, fee, network and claim. The backend independently checks HTLC ownership, trusted network-specific cosigner, timeout and sufficient balance at challenge and reservation. It stores the HTLC as the immutable transaction sender and retains one-time reservation/dispatch semantics. Both wallet accounts are checked again immediately before requesting the native transaction.
 
@@ -133,11 +133,11 @@ Nimiq Pay chooses its own validity height. The stored reservation height is a mi
 
 Payment states are approved `payment-ready` (equivalent to PAYMENT_READY), SUBMITTING, UNKNOWN, CONFIRMED and FAILED. Only CONFIRMED with backend-verified successful execution is shown as paid. Hashes are hints, not receipts. Cancellation, timeout, lost responses and missing finality remain UNKNOWN. Each claim has at most one durable attempt in this version, including after failure; there is no reset/retry endpoint. Reconcile the existing attempt instead of sending another payment.
 
-Safe server configuration is documented in `.env.example`: spending is off, no spending network/positive limit/RPC is configured. Optional independent `RPC_URL` must be HTTPS or loopback HTTP; `RPC_AUTHORIZATION` remains server-only. `PAYMENT_FEE_LUNA` fixes the requested fee (default zero). The server verifies exact fee as well as reward value. Per-payment amount caps and campaign allocation do not include transaction fees. None of this reserves funds on-chain.
+MAINNET read-only verification uses `NIMIQ_READONLY_RPC_URLS`, a comma-separated list of HTTPS origins configured only on the server. The public Nimiq Watch RPC is rate-limited and has no uptime guarantee; configure a healthy backup or use a dedicated node for production. The verifier exposes only read methods and cannot broadcast. `RPC_URL`, `RPC_AUTHORIZATION` and spending controls remain separate TESTNET research settings and are rejected by MAINNET configuration.
 
 For physical testing, use the private-LAN HTTPS procedure and Caddy example linked above. No public development tunnel is needed or permitted by that procedure. The private Caddy endpoint was started and verified locally; Android certificate trust and physical Nimiq Pay validation remain pending. Local certificates and keys are excluded from this repository. **Mainnet readiness remains NO-GO.**
 
-The follow-up [payer-authorized settlement review](docs/PAYER-SELECTED-SETTLEMENT.md) evaluates a possible versioned alternative to strict sender equality, documents what the native confirmation actually contains in pinned host source, and identifies physical testing requirements. That document is historical context; the implemented organiser-authorised HTLC flow is now described in [PAYMENTS.md](docs/PAYMENTS.md). Mainnet remains NO-GO.
+The follow-up [payer-authorized settlement review](docs/PAYER-SELECTED-SETTLEMENT.md) is historical context for the TESTNET HTLC research. MAINNET spending remains NO-GO, while external transfer verification is a separate read-only capability described in [PAYMENTS.md](docs/PAYMENTS.md).
 
 ## Private Android test
 

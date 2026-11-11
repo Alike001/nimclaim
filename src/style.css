@@ -1246,7 +1246,10 @@ main {
   margin: 0;
 }
 .approved-count {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
   border: 1px solid #d7e4d8;
   border-radius: 999px;
   background: #edf4eb;
@@ -1368,5 +1371,39 @@ main {
   }
   .approved-rewards-footer > button {
     width: 100%;
+  }
+}
+
+/* Verified external NIM settlement. */
+.manual-payment-verifier {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e9e1;
+}
+.manual-payment-verifier h3 {
+  margin: 0;
+  color: #214d3e;
+  font-size: 15px;
+}
+.manual-payment-verifier p {
+  font-size: 13px;
+  line-height: 1.65;
+}
+.manual-payment-verifier form {
+  margin-top: 12px;
+  gap: 12px;
+}
+.manual-payment-verifier button {
+  width: 100%;
+}
+.badge.paid {
+  border-color: #b8d9c0;
+  background: #eaf5ec;
+  color: #195c48;
+}
+@media (max-width: 600px) {
+  .manual-payment-verifier {
+    margin-top: 12px;
+    padding-top: 12px;
   }
 }

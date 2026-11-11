@@ -23,6 +23,13 @@ const env = {
 };
 test("MAINNET configuration pins independent TLS database, role, origin and spending block", () => {
   assert.equal(mainnetConfig(env).runtime.database, "nimclaim_mainnet");
+  assert.deepEqual(
+    mainnetConfig({
+      ...env,
+      NIMIQ_READONLY_RPC_URLS: "https://rpc.nimiqwatch.com",
+    }).readonlyRpcUrls,
+    ["https://rpc.nimiqwatch.com"],
+  );
   assert.deepEqual(mainnetConfig(env).runtime.ssl, {
     rejectUnauthorized: true,
     servername: "ep-production-pooler.eu-central-1.aws.neon.tech",
@@ -37,6 +44,13 @@ test("MAINNET configuration pins independent TLS database, role, origin and spen
     { MOBILE_TEST: "1" },
     { NIMCLAIM_MOBILE_TEST: "1" },
     { RPC_URL: "https://rpc.invalid" },
+    {
+      NIMIQ_READONLY_RPC_URLS: "https://one.example,https://two.example",
+      NIMIQ_READONLY_RPC_URL: "https://rpc.nimiqwatch.com",
+    },
+    { NIMIQ_READONLY_RPC_URLS: "http://rpc.nimiqwatch.com" },
+    { NIMIQ_READONLY_RPC_URLS: "https://user:secret@rpc.nimiqwatch.com" },
+    { NIMIQ_READONLY_RPC_URLS: "https://rpc.nimiqwatch.com/api" },
     { SPENDING_NETWORK: "mainnet" },
     { DIRECT_DATABASE_URL: env.DATABASE_URL },
     { NODE_TLS_REJECT_UNAUTHORIZED: "0" },
@@ -60,13 +74,15 @@ test("MAINNET configuration pins independent TLS database, role, origin and spen
       JSON.stringify(Object.keys(patch)),
     );
 });
-test("MAINNET gateway allows signing only, never dispatch or hash-based settlement", () => {
+test("MAINNET gateway allows signed claims and read-only payment verification, never dispatch", () => {
   const id = "12345678-1234-1234-1234-123456789012";
   assert.equal(
     mainnetRoute("POST", `/api/campaigns/${id}/wallet/challenge`),
     true,
   );
   assert.equal(mainnetRoute("POST", `/api/campaigns/${id}/wallet`), true);
+  assert.equal(mainnetRoute("POST", `/api/claims/${id}/payment/verify`), true);
+  assert.equal(mainnetRoute("GET", `/api/claims/${id}/payment/verify`), false);
   for (const route of [
     `/api/claims/${id}/payment/review`,
     `/api/payments/${id}/dispatch`,
