@@ -161,7 +161,7 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     .click();
   await page.getByRole("button", { name: "Authorize campaign wallet" }).click();
   await expect(
-    page.getByText("This campaign is permanently authorized to:"),
+    page.getByText("This is the authorised campaign wallet and expected sender for verified reward payments:"),
   ).toBeVisible();
   await page.getByRole("button", { name: "Create unique invitation" }).click();
   const invitationField = page.getByLabel(
