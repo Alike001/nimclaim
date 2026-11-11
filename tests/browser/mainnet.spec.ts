@@ -6,11 +6,67 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
   page,
 }) => {
   // Isolated synthetic browser data. Real PostgreSQL identity/permissions are tested separately.
+  const authChallenges = new Map<string, string>();
   await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === "/api/auth/challenge") {
+      const id = "00000000-0000-4000-8000-000000000001";
+      const expires = Date.now() + 300_000;
+      const message = JSON.stringify({
+        domain: "NimClaim/organiser/auth/v1",
+        purpose:
+          "Create or access your NimClaim organiser workspace. This is a signature only; no transaction or payment.",
+        origin: url.origin,
+        network: "mainnet",
+        nonce: "a".repeat(64),
+        expires,
+      });
+      authChallenges.set(id, message);
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ id, message, expires, network: "mainnet" }),
+      });
+      return;
+    }
+    if (url.pathname === "/api/auth/verify") {
+      const body = request.postDataJSON() as {
+        challengeId: string;
+        publicKey: string;
+        signature: string;
+      };
+      const message = authChallenges.get(body.challengeId);
+      if (
+        !message ||
+        body.publicKey !== signer.publicKey ||
+        body.signature !== signer.sign(message)
+      ) {
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Synthetic wallet proof rejected." }),
+        });
+        return;
+      }
+      const loginResponse = await route.fetch({
+        url: new URL("/api/login", url.origin).toString(),
+        method: "POST",
+        postData: JSON.stringify({ password: "browser-test-password" }),
+      });
+      await route.fulfill({
+        response: loginResponse,
+        json: {
+          authenticated: true,
+          organiser: { walletAddress: signer.address, created: Date.now() },
+        },
+      });
+      return;
+    }
     const response = await route.fetch();
     const body = await response.json();
     if (
-      route.request().url().endsWith("/api/config") ||
+      url.pathname === "/api/config" ||
       (body.campaign && body.paymentGate)
     )
       await route.fulfill({ response, json: { ...body, claimsOnly: true } });
@@ -56,9 +112,8 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
       { exact: false },
     ),
   ).toBeVisible();
-  await page.getByLabel("Workspace password").fill("browser-test-password");
   await page
-    .getByRole("button", { name: "Sign in to workspace", exact: true })
+    .getByRole("button", { name: "Continue with Nimiq Pay", exact: true })
     .click();
   await expect(page.locator("header .header-access")).toHaveText("Workspace");
   await page.locator("header .header-access").click();
