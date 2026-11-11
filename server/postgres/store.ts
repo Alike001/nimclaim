@@ -612,7 +612,7 @@ export class PostgresStore {
           receipt.recipient,
           receipt.amount,
           receipt.fee,
-          Number((await c.query("SELECT validity_start_height FROM (SELECT 0::bigint AS validity_start_height) q")).rows[0].validity_start_height),
+          receipt.validityStartHeight,
           receipt.blockNumber,
           receipt.blockHash,
           receipt.macroNumber,
