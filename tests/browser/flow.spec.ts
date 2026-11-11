@@ -33,7 +33,7 @@ test("landing makes organiser and contributor paths clear and password visibilit
   if (test.info().project.name === "mobile-chromium")
     await page.setViewportSize({ width: 320, height: 700 });
   await expect(page.locator("header .header-access")).toHaveText(
-    "Organiser sign in",
+    "Organiser workspace",
   );
   await expect(page.getByText("Contributor?", { exact: true })).toBeVisible();
   await expect(
