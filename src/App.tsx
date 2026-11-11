@@ -243,7 +243,7 @@ export default function App() {
         <div className="header-actions">
           {!hash.startsWith("#claim=") && hash !== "#diagnostics" && (
             <a className="header-access" href="#organiser-access">
-              Organiser sign in
+              Organiser workspace
             </a>
           )}
           <span className="network">
@@ -424,7 +424,7 @@ function Organiser({
     );
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading" id="organiser-access">
         <div>
           <p className="eyebrow">Organiser workspace</p>
           <h1>Your campaigns</h1>
