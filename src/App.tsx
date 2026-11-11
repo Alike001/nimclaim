@@ -656,7 +656,7 @@ function Organiser({
                       {staging
                         ? "NIM · illustrative TESTNET amount"
                         : claimsOnly
-                          ? "NIM · unpaid commitment"
+                          ? "NIM · pay in Nimiq Pay"
                           : "NIM / reward"}
                     </small>
                   </div>
@@ -724,7 +724,7 @@ function CreateCampaign({
         {staging
           ? "Each invitation uses one claim-testing slot. Campaign details are fixed once created."
           : claimsOnly
-            ? "Each invitation uses one claim slot. The declared reward amount is an unpaid commitment only; no NIM is held or sent."
+            ? "Each invitation uses one claim slot. NimClaim never holds or sends NIM; organisers pay through Nimiq Pay and verify the completed transfer here."
             : "Each invitation reserves one reward slot. Campaign details are fixed once created."}
       </p>
       <form onSubmit={submit}>
@@ -1463,7 +1463,7 @@ function Recipient({ token, config }: { token: string; config: Config }) {
                   </strong>
                   <p>
                     {data.claim.status === "payment-ready"
-                      ? `Your claim is approved for ${nim(c.amount)} NIM. This is an approval, not proof of payment. If the organiser sends NIM outside NimClaim, ask for the transaction hash and independently check the recipient, amount and finality. This status does not update for external transfers; NimClaim does not hold, send or verify NIM payments.`
+                      ? `Your claim is approved for ${nim(c.amount)} NIM. The organiser sends the reward through Nimiq Pay. After the transfer is finalized, the organiser submits its transaction hash to NimClaim. This screen changes to Paid · verified on-chain only after the sender, recipient, amount and finality checks succeed. NimClaim never sends or holds NIM.`
                       : data.claim.status === "pending"
                         ? "Your signed claim has been received and is awaiting the organiser's review. No NIM has been reserved or sent."
                         : "The organiser did not approve this claim. NimClaim has not sent any NIM. Contact the organiser if you need clarification."}
