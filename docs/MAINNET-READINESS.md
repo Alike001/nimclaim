@@ -1,6 +1,6 @@
 # Mainnet spending: NO-GO
 
-A separate [MAINNET claims deployment](RENDER-MAINNET.md) is prepared for signed campaigns and claims with payments disabled. It still needs the physical no-spend Nimiq Pay acceptance test before release. This document concerns enabling spending.
+The [MAINNET claims deployment](RENDER-MAINNET.md) is live at https://nimclaim-mainnet-smv5.onrender.com. Physical no-spend Nimiq Pay acceptance for organiser access, contributor claims and review was completed on two devices on 11 November 2026. This document concerns enabling spending only.
 
 **Mainnet spending is explicitly blocked in `Payments.gate()` even when every configurable gate passes.** `SPENDING_ENABLED=false` remains the safe configuration. No mainnet spending, environment change, deployment or real transaction is authorized by this review.
 
@@ -25,4 +25,4 @@ Passing automated tests does not resolve these blockers. Existing records, signa
 
 Only `npm start` / `server/index.ts`, using SQLite outside staging/mobile-test mode, implements the native TESTNET payout flow. It remains spending-disabled; a future authorized testnet deployment must resolve the blockers above and satisfy all server gates. This entry point refuses Render, staging and PostgreSQL environment markers.
 
-The Render Blueprint runs `npm run start:staging`, which uses PostgreSQL + Neon. It requires `NETWORK=testnet`, `SPENDING_ENABLED=false`, zero payment limits/fees and no RPC/spending-network settings. Its gateway and backend refuse financial routes, and its restricted runtime role cannot create reservations or consume dispatch permits. Preserved payment tables/locks and stale-attempt reads do not constitute an operational payout or reconciliation API. Implementing PostgreSQL payouts is separate work, not a configuration change. See [RENDER-STAGING.md](RENDER-STAGING.md).
+The active MAINNET Render service runs `npm run start:mainnet` with PostgreSQL + Neon and `NETWORK=mainnet`; it is claim-only and has no payout execution or payment-verification API. The separate TESTNET Render Blueprint runs `npm run start:staging`, requires `NETWORK=testnet` and `SPENDING_ENABLED=false`, and refuses financial routes. Its restricted runtime role cannot create reservations or consume dispatch permits. Preserved payment tables/locks do not constitute an operational payout or reconciliation API. Implementing PostgreSQL payouts is separate work, not a configuration change. See [RENDER-STAGING.md](RENDER-STAGING.md).
