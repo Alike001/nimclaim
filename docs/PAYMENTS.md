@@ -1,15 +1,43 @@
+## MAINNET external transfer verification
+
+The production MAINNET PostgreSQL path has a read-only verification route:
+`POST /api/claims/:claimId/payment/verify` with a 64-character transaction
+hash. It is not a wallet-send route.
+
+- The expected sender is derived from the campaign's immutable authorised
+  organiser wallet.
+- The recipient and exact Luna amount are derived from the approved claim and
+  campaign; clients cannot override them.
+- Only a Basic-to-Basic MAINNET transfer with zero flags and empty sender and
+  recipient data is accepted.
+- The independent RPC must show successful execution, canonical micro-block
+  inclusion and a following justified macro block.
+- A hash can be recorded once globally, and a claim can have one immutable
+  receipt. A hash cannot be reused for another claim.
+- The claim decision remains `payment-ready`; the separate receipt makes the
+  UI show **Paid · verified on-chain**. Approval is never rewritten as proof
+  of payment.
+- If the transaction is missing, mismatched, unsuccessful or not final, the
+  API records nothing and the claim remains unpaid.
+
+The current public Nimiq Watch RPC is rate-limited and has no uptime guarantee.
+It is a demo dependency, not a production SLA. Operate a dedicated MAINNET
+node or a trusted RPC provider before treating this as a general production
+service.
+
 # Native Nimiq Pay HTLC payouts
 
 The campaign organiser's local wallet **authorises** a reward. The active Nimiq Pay remote HTLC **funds** it. These are different addresses. `payment-ready` remains an approval, and only independently verified, finalized successful execution is paid.
 
-Spending remains off by default. Mainnet is explicitly blocked in the payment service, regardless of configuration. Mobile-test and PostgreSQL staging retain their independent financial-route barriers. This change does not deploy anything or change environment variables.
+NimClaim never broadcasts or custodies MAINNET NIM. The production PostgreSQL MAINNET service supports a separate read-only external-transfer verifier: the organiser submits the hash of a transfer already sent through Nimiq Pay. The backend checks the campaign-wallet sender, claim recipient, exact amount, successful canonical inclusion and macro-block finality before storing an immutable receipt. Native spending and escrow remain disabled. The SQLite HTLC path is separate TESTNET research/testing code.
 
 ## Runtime and deployment paths
 
 | Path                                                          | Financial capability                                                                        | Current status                                                                                                                                                                                                                                             |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm start` → `server/index.ts` → SQLite `server/app.ts`      | Implements native TESTNET HTLC challenge, reservation, dispatch, outcome and reconciliation | Spending stays disabled. A future separately approved testnet configuration needs trusted HTTPS, TESTNET network, explicit spending network, bounded amount/fee and independent read-only RPC; cache/device release blockers below must be resolved first. |
-| `npm run start:staging` → `ops/staging-start.ts` → PostgreSQL | Campaigns, claims, organiser review and preserved payment locks only                        | Financially disabled by startup validation, gateway allowlist, API route refusal and restricted database privileges. The Render Blueprint uses this path; flags cannot turn it into a payout deployment.                                                   |
+| `npm run start:staging` → `ops/staging-start.ts` → PostgreSQL | TESTNET campaigns and claims only | Financially disabled by startup validation, gateway allowlist, API route refusal and restricted database privileges. |
+| `npm run start:mainnet` → `ops/mainnet-start.ts` → PostgreSQL | MAINNET campaigns, claims, and read-only external NIM transfer verification | Organisers send through Nimiq Pay. The API verifies exact sender, recipient, amount, canonical execution and macro finality. No broadcast, escrow or automatic payout route. |
 | Private mobile-test mode                                      | Device diagnostics and claims                                                               | Financial routes remain blocked even if spending options are supplied. It cannot validate the complete payout path.                                                                                                                                        |
 
 The SQLite entry point refuses Render/staging/PostgreSQL environment markers. The existing PostgreSQL Render + Neon deployment is not a testnet payout deployment; supporting payouts there requires a separate reviewed implementation. No deployment path currently has release approval to spend, and no environment values were changed for this review.
@@ -71,4 +99,4 @@ The exact reviewed [host bridge](https://github.com/nimiq/nimiq-pay-app/blob/dd9
 
 The API also provides no atomic sender commitment spanning the native confirmation prompt. A switch after the last check can produce a different transaction; independent verification rejects it, but cannot undo a broadcast. Supported host versions, lock/background, late approval and physical testnet behavior still require owner-operated validation.
 
-No physical wallet, live payment or live RPC evidence is asserted by automated tests. Keep spending disabled until the required integration checks pass and review is complete. Mainnet remains NO-GO; PostgreSQL staging has no broadcast implementation. Existing schema v2 immutability, unique-attempt/hash constraints, credentials, sessions, claim signatures and replay protections are retained.
+Automated tests use synthetic RPC transactions and finality fixtures; they are not real payment evidence. MAINNET spending remains NO-GO. The PostgreSQL MAINNET service only verifies transfers already sent through Nimiq Pay and stores immutable receipts. The public demo RPC is rate-limited and has no SLA; use a dedicated node for production.
