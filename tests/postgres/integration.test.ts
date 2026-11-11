@@ -1836,6 +1836,20 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
       .status,
     404,
   );
+  const otherCampaign = await campaign(otherSession, 1);
+  assert.notEqual(otherCampaign.id, c.id);
+  assert.equal(
+    (await otherSession.call("/api/campaigns")).body.campaigns.length,
+    1,
+  );
+  assert.equal(
+    (await organiser.call("/api/campaigns")).body.campaigns.length,
+    1,
+  );
+  assert.equal(
+    (await organiser.call(`/api/campaigns/${otherCampaign.id}`)).status,
+    404,
+  );
   assert.equal(
     (
       await organiser.call(`/api/campaigns/${c.id}/wallet`, {
