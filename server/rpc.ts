@@ -113,6 +113,37 @@ export class HttpRpc implements Rpc {
     return result.result.data as unknown;
   }
 }
+
+export class FailoverRpc implements Rpc {
+  constructor(private readonly providers: Rpc[]) {
+    if (!providers.length)
+      throw new Error("At least one read-only Nimiq RPC endpoint is required.");
+  }
+
+  async call(method: string, params: unknown[]) {
+    let lastError: unknown;
+    for (const provider of this.providers) {
+      try {
+        const result = await provider.call(method, params);
+        if (
+          (method === "getTransactionByHash" ||
+            method === "getBlockByNumber" ||
+            method === "getMacroBlockAfter") &&
+          (result === null || result === undefined)
+        )
+          throw new Error("RPC endpoint has no indexed result for this query.");
+        if (method === "isConsensusEstablished" && result !== true)
+          throw new Error("RPC endpoint has not established consensus.");
+        return result;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("All configured read-only Nimiq RPC endpoints failed.");
+  }
+}
 export async function verifiedHead(rpc: Rpc, network: Network) {
   if ((await rpc.call("getNetworkId", [])) !== chain[network].name)
     throw new Error("RPC chain mismatch.");
