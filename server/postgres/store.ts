@@ -1,7 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { transaction } from "./db.js";
-import { digest, randomToken, verifyOwner } from "../crypto.js";
+import { checkPassword, digest, randomToken, verifyOwner } from "../crypto.js";
 import { fail } from "../http-contract.js";
 import { chain } from "../rpc.js";
 import type { Intent, PaymentState, Receipt } from "../../shared/payments.js";
@@ -13,12 +13,21 @@ export class PostgresStore {
     public origin: string,
     public network: "testnet" | "mainnet" = "testnet",
   ) {}
-  async walletChallenge(campaignId: string, sessionHash: string) {
+  async walletChallenge(
+    campaignId: string,
+    sessionHash: string,
+    organiserId?: string,
+  ) {
     return transaction(this.pool, async (c) => {
+      if (this.network === "mainnet" && !organiserId)
+        fail(401, "Organiser session is required.");
       const campaign = (
-        await c.query("SELECT * FROM campaigns WHERE id=$1 FOR UPDATE", [
-          campaignId,
-        ])
+        await c.query(
+          this.network === "mainnet"
+            ? "SELECT * FROM campaigns WHERE id=$1 AND organiser_id=$2 FOR UPDATE"
+            : "SELECT * FROM campaigns WHERE id=$1 FOR UPDATE",
+          this.network === "mainnet" ? [campaignId, organiserId] : [campaignId],
+        )
       ).rows[0];
       if (!campaign) fail(404, "Campaign not found.");
       if (campaign.expires <= Date.now()) fail(410, "Campaign has expired.");
@@ -58,12 +67,18 @@ export class PostgresStore {
     campaignId: string,
     sessionHash: string,
     input: { challengeId: string; publicKey: string; signature: string },
+    organiserId?: string,
   ) {
     return transaction(this.pool, async (c) => {
+      if (this.network === "mainnet" && !organiserId)
+        fail(401, "Organiser session is required.");
       const campaign = (
-        await c.query("SELECT * FROM campaigns WHERE id=$1 FOR UPDATE", [
-          campaignId,
-        ])
+        await c.query(
+          this.network === "mainnet"
+            ? "SELECT * FROM campaigns WHERE id=$1 AND organiser_id=$2 FOR UPDATE"
+            : "SELECT * FROM campaigns WHERE id=$1 FOR UPDATE",
+          this.network === "mainnet" ? [campaignId, organiserId] : [campaignId],
+        )
       ).rows[0];
       if (!campaign) fail(404, "Campaign not found.");
       if (campaign.expires <= Date.now()) fail(410, "Campaign has expired.");
@@ -117,6 +132,122 @@ export class PostgresStore {
   async read(sql: string, args: unknown[] = []) {
     return transaction(this.pool, async (c) => (await c.query(sql, args)).rows);
   }
+  async organiserAuthChallenge() {
+    if (this.network !== "mainnet")
+      fail(404, "Wallet organiser access is available on MAINNET only.");
+    const id = randomUUID();
+    const expires = Date.now() + 5 * 60_000;
+    const message = JSON.stringify({
+      domain: "NimClaim/organiser/auth/v1",
+      purpose:
+        "Create or access your NimClaim organiser workspace. This is a signature only; no transaction or payment.",
+      origin: this.origin,
+      network: this.network,
+      nonce: randomToken(),
+      expires,
+    });
+    await this.read(
+      "INSERT INTO organiser_auth_challenges (id,message,expires) VALUES ($1,$2,$3)",
+      [id, message, expires],
+    );
+    return { id, message, expires, network: this.network };
+  }
+  async authenticateOrganiser(input: {
+    challengeId: string;
+    publicKey: string;
+    signature: string;
+    legacyPassword?: string;
+  }) {
+    if (this.network !== "mainnet")
+      fail(404, "Wallet organiser access is available on MAINNET only.");
+    return transaction(this.pool, async (c) => {
+      const challenge = (
+        await c.query(
+          "SELECT * FROM organiser_auth_challenges WHERE id=$1 FOR UPDATE",
+          [input.challengeId],
+        )
+      ).rows[0];
+      if (!challenge || challenge.used || challenge.expires <= Date.now())
+        fail(409, "Wallet sign-in request expired or was already used. Try again.");
+      let binding: any;
+      try {
+        binding = JSON.parse(challenge.message);
+      } catch {
+        fail(409, "Wallet sign-in request is invalid. Try again.");
+      }
+      if (
+        binding.domain !== "NimClaim/organiser/auth/v1" ||
+        binding.origin !== this.origin ||
+        binding.network !== "mainnet" ||
+        binding.expires !== challenge.expires
+      )
+        fail(409, "Wallet sign-in request belongs to another site or network.");
+      const publicKey = input.publicKey.toLowerCase();
+      const address = verifyOwner(challenge.message, publicKey, input.signature);
+      if (!address) fail(401, "Nimiq Pay signature could not be verified.");
+      let organiser = (
+        await c.query(
+          "SELECT id,wallet_address,public_key,legacy,created FROM organisers WHERE wallet_address=$1 FOR UPDATE",
+          [address],
+        )
+      ).rows[0];
+      if (organiser) {
+        if (organiser.public_key !== publicKey)
+          fail(401, "This wallet does not match the registered organiser key.");
+        if (input.legacyPassword !== undefined)
+          fail(409, "This wallet already has a workspace. Remove the old password and sign in again.");
+      } else if (input.legacyPassword !== undefined) {
+        const legacy = (
+          await c.query("SELECT password_hash FROM organiser WHERE id=1")
+        ).rows[0];
+        if (
+          !legacy ||
+          !checkPassword(input.legacyPassword, legacy.password_hash)
+        )
+          fail(401, "Previous workspace password is incorrect. No account was linked.");
+        const unlinked = (
+          await c.query(
+            "SELECT id FROM organisers WHERE legacy=true AND wallet_address IS NULL AND public_key IS NULL FOR UPDATE",
+          )
+        ).rows[0];
+        if (!unlinked)
+          fail(409, "The previous workspace has already been linked to a wallet.");
+        organiser = (
+          await c.query(
+            "UPDATE organisers SET wallet_address=$1,public_key=$2 WHERE id=$3 AND wallet_address IS NULL AND public_key IS NULL RETURNING id,wallet_address,public_key,legacy,created",
+            [address, publicKey, unlinked.id],
+          )
+        ).rows[0];
+        if (!organiser)
+          fail(409, "The previous workspace was linked elsewhere. Sign in again.");
+      } else {
+        organiser = (
+          await c.query(
+            "INSERT INTO organisers (id,wallet_address,public_key,created) VALUES ($1,$2,$3,$4) RETURNING id,wallet_address,public_key,legacy,created",
+            [randomUUID(), address, publicKey, Date.now()],
+          )
+        ).rows[0];
+      }
+      const consumed = await c.query(
+        "UPDATE organiser_auth_challenges SET used=1 WHERE id=$1 AND used=0 RETURNING id",
+        [challenge.id],
+      );
+      if (consumed.rowCount !== 1)
+        fail(409, "Wallet sign-in request was already used. Try again.");
+      const token = randomToken();
+      await c.query(
+        "INSERT INTO sessions (hash,expires,organiser_id) VALUES ($1,$2,$3)",
+        [digest(token), Date.now() + 8 * 3600000, organiser.id],
+      );
+      return {
+        token,
+        organiser: {
+          walletAddress: organiser.wallet_address,
+          created: organiser.created,
+        },
+      };
+    });
+  }
   async rate(login: boolean) {
     // Atomic UPSERT persists the increment even when the HTTP request is rejected.
     // Server time avoids disagreement between overlapping processes.
@@ -158,13 +289,18 @@ export class PostgresStore {
     )
       fail(409, "This invitation has already been used.");
   }
-  async issue(campaignId: string) {
+  async issue(campaignId: string, organiserId?: string) {
     return transaction(this.pool, async (c) => {
       // Serializes campaign slot allocation across all API processes.
+      if (this.network === "mainnet" && !organiserId)
+        fail(401, "Organiser session is required.");
       const campaign = (
-        await c.query("SELECT * FROM campaigns WHERE id=$1 FOR UPDATE", [
-          campaignId,
-        ])
+        await c.query(
+          this.network === "mainnet"
+            ? "SELECT * FROM campaigns WHERE id=$1 AND organiser_id=$2 FOR UPDATE"
+            : "SELECT * FROM campaigns WHERE id=$1 FOR UPDATE",
+          this.network === "mainnet" ? [campaignId, organiserId] : [campaignId],
+        )
       ).rows[0];
       if (!campaign) fail(404, "Campaign not found.");
       if (campaign.expires <= Date.now()) fail(410, "Campaign has expired.");
@@ -286,12 +422,16 @@ export class PostgresStore {
       };
     });
   }
-  async decide(id: string, status: string) {
+  async decide(id: string, status: string, organiserId?: string) {
     await transaction(this.pool, async (c) => {
+      if (this.network === "mainnet" && !organiserId)
+        fail(401, "Organiser session is required.");
       const claim = (
         await c.query(
-          "SELECT a.*,p.expires FROM claims a JOIN campaigns p ON p.id=a.campaign_id WHERE a.id=$1 FOR UPDATE OF a",
-          [id],
+          this.network === "mainnet"
+            ? "SELECT a.*,p.expires FROM claims a JOIN campaigns p ON p.id=a.campaign_id WHERE a.id=$1 AND p.organiser_id=$2 FOR UPDATE OF a"
+            : "SELECT a.*,p.expires FROM claims a JOIN campaigns p ON p.id=a.campaign_id WHERE a.id=$1 FOR UPDATE OF a",
+          this.network === "mainnet" ? [id, organiserId] : [id],
         )
       ).rows[0];
       if (!claim) fail(404, "Claim not found.");
