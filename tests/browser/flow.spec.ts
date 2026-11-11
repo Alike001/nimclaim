@@ -37,7 +37,7 @@ test("landing makes organiser and contributor paths clear and password visibilit
   );
   await expect(page.getByText("Contributor?", { exact: true })).toBeVisible();
   await expect(
-    page.getByText(/You don't need an account or organiser password/),
+    page.getByText(/No account or organiser password is needed/),
   ).toBeVisible();
   await expect(
     page.getByText(
