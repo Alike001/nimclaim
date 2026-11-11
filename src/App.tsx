@@ -310,7 +310,7 @@ export default function App() {
         {config?.staging ? (
           "TESTNET claim testing only. Native NIM spending is disabled."
         ) : config?.claimsOnly ? (
-          "MAINNET claims only. NimClaim records signed claims and organiser decisions; it does not send or verify NIM payments."
+          "MAINNET payments are sent through Nimiq Pay and independently verified on-chain by transaction hash. NimClaim never sends or holds funds."
         ) : (
           <>
             Native NIM rewards.{" "}
@@ -959,7 +959,7 @@ function ApprovedRewards({
         </button>
         <p className="muted" role="status" aria-live="polite">
           {feedback ||
-            "No external payments are verified by this export; it is not a receipt."}
+            "CSV reflects each verified on-chain payment where available; open the transaction link for independent evidence."}
         </p>
       </div>
     </section>
@@ -1234,9 +1234,6 @@ function CampaignDetail({
                   Reject claim
                 </button>
               </div>
-            )}
-            {data.claimsOnly && claim.payment && (
-              <PaymentStatus payment={claim.payment} />
             )}
             {claim.status === "payment-ready" && !claim.payment && (
               <p className="muted">
