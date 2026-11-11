@@ -13,7 +13,9 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     if (url.pathname === "/api/auth/challenge") {
       const id = "00000000-0000-4000-8000-000000000001";
       const expires = Date.now() + 300_000;
-      const intent = (request.postDataJSON() as { intent: "login" | "register" | "link" }).intent;
+      const intent = (
+        request.postDataJSON() as { intent: "login" | "register" | "link" }
+      ).intent;
       const purpose = {
         login: "Sign in to your existing NimClaim organiser workspace",
         register: "Create a new NimClaim organiser workspace",
@@ -72,10 +74,7 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     }
     const response = await route.fetch();
     const body = await response.json();
-    if (
-      url.pathname === "/api/config" ||
-      (body.campaign && body.paymentGate)
-    )
+    if (url.pathname === "/api/config" || (body.campaign && body.paymentGate))
       await route.fulfill({ response, json: { ...body, claimsOnly: true } });
     else await route.fulfill({ response });
   });

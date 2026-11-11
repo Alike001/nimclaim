@@ -448,7 +448,9 @@ function Organiser({
               wallet backup safe.
             </p>
             <details className="auth-legacy-link">
-              <summary>Already used NimClaim? Link your previous workspace</summary>
+              <summary>
+                Already used NimClaim? Link your previous workspace
+              </summary>
               <p>
                 If you created campaigns on the original single-organiser
                 version, enter its one-time workspace password here. Your old
@@ -467,9 +469,8 @@ function Organiser({
                 onChange={(event) => setLegacyPassword(event.target.value)}
               />
               <p className="auth-help">
-                This password is used once to attach your previous campaigns
-                to this wallet. Never enter your Nimiq Pay PIN or recovery
-                phrase.
+                This password is used once to attach your previous campaigns to
+                this wallet. Never enter your Nimiq Pay PIN or recovery phrase.
               </p>
               <button
                 className="wallet-login"

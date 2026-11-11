@@ -17,23 +17,20 @@ async function main() {
   const env = parseEnv(protectedLocalFile(configPath));
   const { runtime } = mainnetConfig(env, true);
   const keyInfo = lstatSync(keyPath);
-  if (
-    !keyInfo.isFile() ||
-    (keyInfo.mode & 0o077) !== 0 ||
-    keyInfo.size !== 32
-  )
+  if (!keyInfo.isFile() || (keyInfo.mode & 0o077) !== 0 || keyInfo.size !== 32)
     throw new Error("Backup key must be a protected 32-byte regular file");
   const key = readFileSync(keyPath);
-  if (!/^pg_dump \(PostgreSQL\) 17\./.test(
-    execFileSync("pg_dump", ["--version"], { encoding: "utf8" }).trim(),
-  ))
+  if (
+    !/^pg_dump \(PostgreSQL\) 17\./.test(
+      execFileSync("pg_dump", ["--version"], { encoding: "utf8" }).trim(),
+    )
+  )
     throw new Error("PostgreSQL 17 pg_dump is required");
   const pool = createPool(runtime);
   let counts = { campaigns: 0, invitations: 0, claims: 0, events: 0 };
   try {
     const version = Number(
-      (await pool.query("SHOW server_version_num")).rows[0]
-        .server_version_num,
+      (await pool.query("SHOW server_version_num")).rows[0].server_version_num,
     );
     const settings = Object.fromEntries(
       (

@@ -1590,11 +1590,7 @@ test("MAINNET tenant migration preserves legacy campaigns, invitations, claims a
   const db = await database(t, false);
   const legacyDirectory = mkdtempSync(join(tmpdir(), "nimclaim-mainnet-v3-"));
   try {
-    for (const file of [
-      "001_claims.sql",
-      "002_payments.sql",
-      "003_limits.sql",
-    ])
+    for (const file of ["001_claims.sql", "002_payments.sql", "003_limits.sql"])
       cpSync(
         join(mainnetIdentity.directory, file),
         join(legacyDirectory, file),
@@ -1608,22 +1604,26 @@ test("MAINNET tenant migration preserves legacy campaigns, invitations, claims a
     const claimId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
     const sessionHash = "f".repeat(64);
     const now = Date.now();
-    await db.pool.query(
-      "INSERT INTO sessions (hash,expires) VALUES ($1,$2)",
-      [sessionHash, now + 3_600_000],
-    );
+    await db.pool.query("INSERT INTO sessions (hash,expires) VALUES ($1,$2)", [
+      sessionHash,
+      now + 3_600_000,
+    ]);
     await db.pool.query(
       "INSERT INTO campaigns VALUES ($1,'Legacy campaign','Existing details',12345,2,$2,$3)",
       [campaignId, now + 86_400_000, now],
     );
-    await db.pool.query(
-      "INSERT INTO invitations VALUES ($1,$2,$3,$4)",
-      [invitationId, campaignId, "a".repeat(64), now],
-    );
-    await db.pool.query(
-      "INSERT INTO challenges VALUES ($1,$2,$3,$4,1)",
-      [challengeId, invitationId, "legacy signed challenge", now + 60_000],
-    );
+    await db.pool.query("INSERT INTO invitations VALUES ($1,$2,$3,$4)", [
+      invitationId,
+      campaignId,
+      "a".repeat(64),
+      now,
+    ]);
+    await db.pool.query("INSERT INTO challenges VALUES ($1,$2,$3,$4,1)", [
+      challengeId,
+      invitationId,
+      "legacy signed challenge",
+      now + 60_000,
+    ]);
     await db.pool.query(
       "INSERT INTO claims VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8)",
       [
@@ -1668,10 +1668,9 @@ test("MAINNET tenant migration preserves legacy campaigns, invitations, claims a
     );
     assert.equal(
       (
-        await db.pool.query(
-          "SELECT token_hash FROM invitations WHERE id=$1",
-          [invitationId],
-        )
+        await db.pool.query("SELECT token_hash FROM invitations WHERE id=$1", [
+          invitationId,
+        ])
       ).rows[0].token_hash,
       "a".repeat(64),
     );
@@ -1685,9 +1684,10 @@ test("MAINNET tenant migration preserves legacy campaigns, invitations, claims a
     );
     assert.equal(
       (
-        await db.pool.query("SELECT count(*) AS n FROM events WHERE claim_id=$1", [
-          claimId,
-        ])
+        await db.pool.query(
+          "SELECT count(*) AS n FROM events WHERE claim_id=$1",
+          [claimId],
+        )
       ).rows[0].n,
       1,
     );
@@ -1727,10 +1727,7 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
   assert.equal(config.network, "mainnet");
   assert.equal(config.staging, false);
   assert.equal(config.claimsOnly, true);
-  assert.equal(
-    (await organiser.call("/api/login", { password })).status,
-    404,
-  );
+  assert.equal((await organiser.call("/api/login", { password })).status, 404);
   const unknownClient = client(api.port, appOrigin);
   const unknownSigner = testSigner();
   const unknownChallenge = await unknownClient.call("/api/auth/challenge", {
@@ -1818,17 +1815,9 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
     (await otherSession.call("/api/campaigns")).body.campaigns,
     [],
   );
+  assert.equal((await otherSession.call(`/api/campaigns/${c.id}`)).status, 404);
   assert.equal(
-    (await otherSession.call(`/api/campaigns/${c.id}`)).status,
-    404,
-  );
-  assert.equal(
-    (
-      await otherSession.call(
-        `/api/campaigns/${c.id}/invitations`,
-        {},
-      )
-    ).status,
+    (await otherSession.call(`/api/campaigns/${c.id}/invitations`, {})).status,
     404,
   );
   assert.equal(
@@ -1987,7 +1976,9 @@ test("MAINNET startup refuses TESTNET identities and staging refuses MAINNET; or
     "INSERT INTO campaigns (id,title,description,amount,slots,expires,created,organiser_id) VALUES ($1,'Synthetic','Test',1,1,$2,$3,$4)",
     [id, Date.now() + 3600000, Date.now(), legacyOrganiserId],
   );
-  const token = new URL((await store.issue(id, legacyOrganiserId)).url).hash.slice(7);
+  const token = new URL(
+    (await store.issue(id, legacyOrganiserId)).url,
+  ).hash.slice(7);
   const signer = testSigner();
   const challenge = await store.challenge(token);
   const input = {

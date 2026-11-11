@@ -92,9 +92,7 @@ export async function verifySchema(
     }
     if (identity.network === "mainnet") {
       const legacy = (
-        await c.query(
-          "SELECT id FROM public.organisers WHERE legacy=true",
-        )
+        await c.query("SELECT id FROM public.organisers WHERE legacy=true")
       ).rows;
       if (legacy.length !== 1)
         throw new Error("MAINNET legacy workspace migration is incomplete");

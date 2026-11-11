@@ -325,16 +325,13 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
           .object({ decision: z.enum(["payment-ready", "rejected"]) })
           .strict()
           .parse(body);
-        return send(
-          200,
-          {
-            claim: await store.decide(
-              decision[1],
-              status,
-              mainnet ? organiserId : undefined,
-            ),
-          },
-        );
+        return send(200, {
+          claim: await store.decide(
+            decision[1],
+            status,
+            mainnet ? organiserId : undefined,
+          ),
+        });
       }
       fail(404, "Endpoint not found.");
     } catch (error) {

@@ -173,7 +173,10 @@ export class PostgresStore {
         )
       ).rows[0];
       if (!challenge || challenge.used || challenge.expires <= Date.now())
-        fail(409, "Wallet sign-in request expired or was already used. Try again.");
+        fail(
+          409,
+          "Wallet sign-in request expired or was already used. Try again.",
+        );
       let binding: any;
       try {
         binding = JSON.parse(challenge.message);
@@ -202,7 +205,11 @@ export class PostgresStore {
       )
         fail(409, "Wallet sign-in request purpose or nonce is invalid.");
       const publicKey = input.publicKey.toLowerCase();
-      const address = verifyOwner(challenge.message, publicKey, input.signature);
+      const address = verifyOwner(
+        challenge.message,
+        publicKey,
+        input.signature,
+      );
       if (!address) fail(401, "Nimiq Pay signature could not be verified.");
       let organiser = (
         await c.query(
@@ -214,14 +221,20 @@ export class PostgresStore {
         if (input.legacyPassword !== undefined)
           fail(400, "Do not enter a previous password when signing in.");
         if (!organiser)
-          fail(404, "No workspace is linked to this wallet. Choose Create a new workspace.");
+          fail(
+            404,
+            "No workspace is linked to this wallet. Choose Create a new workspace.",
+          );
         if (organiser.public_key !== publicKey)
           fail(401, "This wallet does not match the registered organiser key.");
       } else if (intent === "register") {
         if (input.legacyPassword !== undefined)
           fail(400, "A new workspace does not need a previous password.");
         if (organiser)
-          fail(409, "This wallet already has a workspace. Choose Sign in instead.");
+          fail(
+            409,
+            "This wallet already has a workspace. Choose Sign in instead.",
+          );
         organiser = (
           await c.query(
             "INSERT INTO organisers (id,wallet_address,public_key,created) VALUES ($1,$2,$3,$4) RETURNING id,wallet_address,public_key,legacy,created",
@@ -233,19 +246,28 @@ export class PostgresStore {
           fail(409, "This wallet already has a workspace. Sign in instead.");
         const legacyPassword = input.legacyPassword ?? "";
         if (legacyPassword.length === 0)
-          fail(400, "Enter the previous workspace password to link its records.");
+          fail(
+            400,
+            "Enter the previous workspace password to link its records.",
+          );
         const legacy = (
           await c.query("SELECT password_hash FROM organiser WHERE id=1")
         ).rows[0];
         if (!legacy || !checkPassword(legacyPassword, legacy.password_hash))
-          fail(401, "Previous workspace password is incorrect. No account was linked.");
+          fail(
+            401,
+            "Previous workspace password is incorrect. No account was linked.",
+          );
         const unlinked = (
           await c.query(
             "SELECT id FROM organisers WHERE legacy=true AND wallet_address IS NULL AND public_key IS NULL FOR UPDATE",
           )
         ).rows[0];
         if (!unlinked)
-          fail(409, "The previous workspace has already been linked to a wallet.");
+          fail(
+            409,
+            "The previous workspace has already been linked to a wallet.",
+          );
         organiser = (
           await c.query(
             "UPDATE organisers SET wallet_address=$1,public_key=$2 WHERE id=$3 AND wallet_address IS NULL AND public_key IS NULL RETURNING id,wallet_address,public_key,legacy,created",
@@ -253,7 +275,10 @@ export class PostgresStore {
           )
         ).rows[0];
         if (!organiser)
-          fail(409, "The previous workspace was linked elsewhere. Sign in again.");
+          fail(
+            409,
+            "The previous workspace was linked elsewhere. Sign in again.",
+          );
       }
       const consumed = await c.query(
         "UPDATE organiser_auth_challenges SET used=1 WHERE id=$1 AND used=0 RETURNING id",
