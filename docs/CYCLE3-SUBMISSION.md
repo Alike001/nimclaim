@@ -2,19 +2,33 @@
 
 **Submission date:** 11 November 2026  
 **Category:** Pay  
+**Pricing:** Free  
 **Public Mini App:** https://nimclaim-mainnet-smv5.onrender.com  
 **Open-source repository:** https://github.com/Alike001/nimclaim  
 **Submission form:** https://miniappscompetition.com/submit
 
-## Copy-ready description (under 250 words)
+## Form details
 
-NimClaim helps Nimiq communities recognise and organise contributor rewards. Organisers connect their Nimiq Pay wallet, create a campaign with a declared NIM reward and deadline, and issue private invitation links. Each contributor opens their link inside Nimiq Pay, signs a one-time wallet ownership request, and submits a claim without registering or sharing a private key. Organisers review verified claims, approve or reject them, and maintain a visible decision history.
+- **App name:** NimClaim
+- **Tagline:** Signed claims. Clear reward decisions.
+- **Category:** Pay
+- **Pricing:** Free
+- **Repository:** https://github.com/Alike001/nimclaim
+- **Demo URL:** https://nimclaim-mainnet-smv5.onrender.com
+- **Video:** Optional; add a link only if a final demo video is ready.
+- **Builder story:** Optional in the portal, but recommended to explain the real-device test and the product's deliberate settlement boundary.
+- **Social / Skool links:** Add only genuine posts; do not invent links.
 
-On MAINNET, NimClaim supports separate wallet-owned organiser workspaces, private invitations, real wallet signatures, persistent claims and approval statuses. An Approved Rewards view provides the recipient NIM address, exact amount, copyable settlement details and a CSV handoff for organisers.
+## Required written description (max 250 words)
 
-**Important limit:** the declared reward is not escrowed. An approved claim is not proof of payment. Organisers may send NIM separately with Nimiq Pay, but NimClaim does not initiate, track or independently verify those transfers. The interface labels approvals as unverified/unpaid in-app, even if an external payment has occurred. Automated settlement, escrow and paid receipts are not part of this release.
+NimClaim is a Nimiq Pay Mini App for open-source communities, hackathon organisers and small project teams that need a clear way to manage contributor rewards. Organisers sign in with their Nimiq Pay wallet, create a campaign with a declared NIM reward and deadline, and issue private, single-use invitation links. A contributor opens an invitation in Nimiq Pay and signs a one-time request to prove control of the receiving wallet—without creating an account or sharing a private key. Organisers review each claim, approve or reject it, and retain a persistent decision history. For approved claims, NimClaim shows the recipient address and exact NIM amount, provides copyable settlement details, and exports the approved-rewards list as CSV so an organiser can arrange a separate payment in Nimiq Pay. The workflow has been exercised on two real Nimiq Pay devices with an organiser and contributor. NimClaim does not hold funds, escrow rewards, initiate transfers, or verify external payments; an approval remains unpaid/unverified in the app until a separately verified settlement capability exists. Nimiq Pay wallet signatures and NIM are central to the experience, not just an added logo or payment button.
 
-The public version uses Nimiq Pay for wallet verification and was exercised on real mainnet devices with an organiser and contributor.
+
+## Optional builder story
+
+I built NimClaim around a simple distinction: a reward promise is not a verified claim, and an approval is not a payment. Organisers of open-source projects, hackathons and community initiatives need to know which wallet is requesting a reward; contributors need a straightforward way to prove wallet ownership without creating another account or sharing sensitive information. I wanted to make that handoff clear and traceable without pretending to solve settlement before the wallet host provides the guarantees needed for safe payment verification.
+
+I tested the workflow on two separate Nimiq Pay devices: organiser wallet registration, campaign creation, private invitation, contributor signature, claim submission and organiser approval. After the real claim was approved, I separately sent the 10 NIM reward through Nimiq Pay. That transfer happened outside NimClaim, so the app does not record it as paid or claim to verify it. This release focuses on reliable claims, clear decisions and a safe reward handoff; automated settlement remains a separate capability that requires further technical validation.
 
 ## Release evidence
 
@@ -25,43 +39,48 @@ The public version uses Nimiq Pay for wallet verification and was exercised on r
 - [x] Matching status and history on both devices
 - [x] Approved Rewards address copy and CSV download
 - [x] Mainnet spending disabled by server configuration
-- [ ] Independent confirmation of the organiser-reported separate 10 NIM transfer (transaction hash not supplied)
-- [ ] Automated payout/escrow and independent settlement verifier (out of scope)
-- [ ] Final submission form accepted and merged (not yet established)
+- [x] Organiser reported sending 10 NIM separately from Nimiq Pay after approval
+- [ ] Independent confirmation of the separate 10 NIM transfer (transaction hash not supplied)
+- [ ] Automated payout/escrow and independent settlement verifier (out of scope for this release)
+- [ ] Final Cycle III submission PR accepted/merged (not yet established)
 
 ## Suggested 3-minute demo outline
 
-0:00–0:20 — Explain why contributors need a clear signed claim and organiser decision. Show the landing page and MAINNET status.
+0:00–0:20 — Explain the coordination problem: a reward request, wallet ownership and organiser approval should be visible and distinct. Show the landing page and MAINNET status.
 
-0:20–0:50 — Open the organiser workspace and an existing real campaign, showing the per-contributor NIM commitment and authorised signing wallet.
+0:20–0:50 — Open the organiser workspace and an existing real campaign, showing the declared per-contributor NIM amount and authorised signing wallet.
 
 0:50–1:25 — On the contributor phone, open a private invitation **with its secret token hidden in the video**. Show wallet signing and the resulting claim, not the private request itself.
 
 1:25–1:55 — In the organiser workspace, show the claim history and approval decision. On the contributor phone, refresh and show the same status.
 
-1:55–2:25 — Show Approved Rewards, verified recipient address, copy details, and CSV export. Explain it is a payout handoff, **not an actual payment receipt**.
+1:55–2:25 — Show Approved Rewards, recipient address, copy details and CSV export. Explain that this is a handoff, not an in-app payment receipt.
 
-2:25–3:00 — Explain that any NIM transfer must be signed separately in Nimiq Pay and independently verified on-chain. Show public GitHub README and end with the public app link.
+2:25–3:00 — Explain that the organiser sent the 10 NIM separately through Nimiq Pay, outside NimClaim. Show the public GitHub repository and live app. Do not describe the external transfer as NimClaim-verified.
 
-## Manual payment evidence (before claiming it is confirmed)
+## Manual payment evidence
 
-For the organiser-reported 10 NIM transfer, retrieve the transaction hash from Nimiq Pay. Use a mainnet explorer such as https://nimiq.watch/ to compare the actual sender and recipient, the 10 NIM amount (1,000,000 Luna), execution success and finality. Save a redacted screenshot or explorer link for the demo. No wallet seed, recovery phrase, invitation token or organiser authentication token should be published. Do **not** edit the database, set a paid flag, or display an in-app paid receipt from a hash alone.
+For the organiser-reported 10 NIM transfer, retrieve the transaction hash from Nimiq Pay if available. Use a mainnet explorer such as https://nimiq.watch/ to compare the actual sender and recipient, the 10 NIM amount (1,000,000 Luna), execution success and finality. Save a redacted screenshot or explorer link for the demo. No wallet seed, recovery phrase, invitation token or organiser authentication token should be published.
+
+Do **not** edit the database, set a paid flag, or display an in-app paid receipt from a hash alone. NimClaim does not independently verify external MAINNET transfers.
 
 ## Last release checks
 
 1. Reopen the public app in Nimiq Pay, confirm MAINNET, and sign into the existing workspace.
-2. Reopen an existing approved campaign; check that the recipient, amount and event history survive refresh.
-3. Copy the recipient details, download CSV and inspect its external-payment-unverified column.
+2. Reopen the existing approved campaign; check that the recipient, amount and event history survive refresh.
+3. Copy the recipient details, download CSV and inspect the external-payment-unverified field.
 4. Reopen the contributor invitation and confirm approval remains visible, with an explicit note that external payments are not tracked.
-5. Verify that no wallet payment prompt is initiated by any NimClaim button and no new spending endpoint is exposed.
-6. Check the README, demo link, GitHub repository and app URL; submit the form **before 23:59 UTC on 11 November 2026**.
+5. Verify that no NimClaim button initiates a wallet payment prompt and no new spending endpoint is exposed.
+6. Check the README, public repository and app URL.
+7. Submit through the portal before the Cycle III deadline shown in the Registration Dashboard (the previous release notes recorded 23:59 UTC on 11 November 2026).
 
 ## Facts to avoid overstating
 
-- Wallet ownership signature is real; it does not prove contribution quality or one human per wallet.
-- Approved · unpaid means the application has no verified payment record; it does not prove money was never sent externally.
-- The user reported one 10 NIM payment made outside NimClaim; no independently verified on-chain receipt was available when this document was written.
+- A wallet ownership signature proves control of a key; it does not prove contribution quality or one human per wallet.
+- **Approved · unpaid** means NimClaim has no verified payment record; it does not prove that no external transfer occurred.
+- The 10 NIM transfer was reported by the organiser as a separate Nimiq Pay transfer. It is not verified by NimClaim or represented by an in-app paid receipt.
 - No funded contract escrow or automated MAINNET NIM payout is deployed.
 - Automated browser fixtures are not the same as physical-device tests.
+- Mainnet spending remains disabled.
 
-**Judging continuity:** keep the Render service, existing PostgreSQL database, workspace accounts, claim history and spending gate unchanged during submission.
+**Judging continuity:** keep the Render service, existing PostgreSQL database, organiser workspaces, claim history and spending gate unchanged during submission.
