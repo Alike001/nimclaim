@@ -219,7 +219,7 @@ function Landing({
           <strong>Transparency, not a payment promise.</strong>
           <p>
             {claimsOnly
-              ? "MAINNET supports signed claims and organiser review only. NimClaim does not send, track or verify NIM payouts."
+              ? "MAINNET payments are sent through Nimiq Pay; NimClaim verifies matching finalized transfers by transaction hash. It never sends or holds NIM."
               : "Approval marks a reward as ready for payment, not paid. Native sending remains blocked pending sender-binding and independent settlement verification."}
           </p>
         </div>
