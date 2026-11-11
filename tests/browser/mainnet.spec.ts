@@ -60,9 +60,7 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
   await page
     .getByRole("button", { name: "Sign in to workspace", exact: true })
     .click();
-  await expect(page.locator("header .header-access")).toHaveText(
-    "Workspace",
-  );
+  await expect(page.locator("header .header-access")).toHaveText("Workspace");
   await page.locator("header .header-access").click();
   await expect(page.locator("#organiser-access")).toBeVisible();
   await page.getByRole("button", { name: "＋ Create campaign" }).click();

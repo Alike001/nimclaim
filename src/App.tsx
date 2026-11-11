@@ -24,11 +24,7 @@ type Config = {
   staging?: boolean;
   claimsOnly?: boolean;
 };
-function reviewLabel(
-  status: string,
-  staging?: boolean,
-  claimsOnly?: boolean,
-) {
+function reviewLabel(status: string, staging?: boolean, claimsOnly?: boolean) {
   if (staging && status === "payment-ready") return "Approved for testing";
   if (claimsOnly && status === "payment-ready") return "Approved · unpaid";
   return statusLabel(status);
@@ -419,9 +415,9 @@ function Organiser({
               : "This deployment has one private organiser account. Only its owner can create campaigns or review claims. Contributors use their invitation links and never need this password."}
           </p>
           <p className="auth-contributor-note">
-            <strong>Here to claim a reward?</strong> In Nimiq Pay, open Mini Apps
-            → Custom URL and paste the complete invitation link. You do not need
-            to sign in here.
+            <strong>Here to claim a reward?</strong> In Nimiq Pay, open Mini
+            Apps → Custom URL and paste the complete invitation link. You do not
+            need to sign in here.
           </p>
         </section>
       </>
