@@ -163,9 +163,10 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
         )[0];
         if (!inv) fail(404, "Invitation not found. Check your link.");
         const campaign = (
-          await store.read("SELECT * FROM campaigns WHERE id=$1", [
-            inv.campaign_id,
-          ])
+          await store.read(
+            "SELECT id,title,description,amount,slots,expires,created FROM campaigns WHERE id=$1",
+            [inv.campaign_id],
+          )
         )[0];
         return send(200, {
           campaign,
@@ -229,8 +230,8 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
         return send(200, {
           campaigns: await store.read(
             mainnet
-              ? `SELECT c.*,(SELECT count(*) FROM invitations WHERE campaign_id=c.id) AS issued,(SELECT count(*) FROM claims WHERE campaign_id=c.id) AS claimed FROM campaigns c WHERE c.organiser_id=$1 ORDER BY created DESC`
-              : `SELECT c.*,(SELECT count(*) FROM invitations WHERE campaign_id=c.id) AS issued,(SELECT count(*) FROM claims WHERE campaign_id=c.id) AS claimed FROM campaigns c ORDER BY created DESC`,
+              ? `SELECT c.id,c.title,c.description,c.amount,c.slots,c.expires,c.created,(SELECT count(*) FROM invitations WHERE campaign_id=c.id) AS issued,(SELECT count(*) FROM claims WHERE campaign_id=c.id) AS claimed FROM campaigns c WHERE c.organiser_id=$1 ORDER BY created DESC`
+              : `SELECT c.id,c.title,c.description,c.amount,c.slots,c.expires,c.created,(SELECT count(*) FROM invitations WHERE campaign_id=c.id) AS issued,(SELECT count(*) FROM claims WHERE campaign_id=c.id) AS claimed FROM campaigns c ORDER BY created DESC`,
             mainnet ? [organiserId] : [],
           ),
         });
@@ -246,8 +247,8 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
         const campaign = (
           await store.read(
             mainnet
-              ? "INSERT INTO campaigns (id,title,description,amount,slots,expires,created,organiser_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *"
-              : "INSERT INTO campaigns VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *",
+              ? "INSERT INTO campaigns (id,title,description,amount,slots,expires,created,organiser_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,title,description,amount,slots,expires,created"
+              : "INSERT INTO campaigns VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,title,description,amount,slots,expires,created",
             mainnet
               ? [
                   randomUUID(),
@@ -277,8 +278,8 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
         const campaign = (
           await store.read(
             mainnet
-              ? "SELECT * FROM campaigns WHERE id=$1 AND organiser_id=$2"
-              : "SELECT * FROM campaigns WHERE id=$1",
+              ? "SELECT id,title,description,amount,slots,expires,created FROM campaigns WHERE id=$1 AND organiser_id=$2"
+              : "SELECT id,title,description,amount,slots,expires,created FROM campaigns WHERE id=$1",
             mainnet ? [detail[1], organiserId] : [detail[1]],
           )
         )[0];
