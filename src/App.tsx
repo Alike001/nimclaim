@@ -12,6 +12,11 @@ import {
   type Claim,
 } from "./api";
 import {
+  getApprovedUnpaidClaims,
+  buildApprovedRewardsCsv,
+  buildPayoutDetails,
+} from "./payout-export";
+import {
   connectWallet,
   signChallenge,
   walletError,
@@ -587,6 +592,7 @@ function Organiser({
       {selected ? (
         <CampaignDetail
           id={selected}
+          network={network}
           back={() => {
             setSelected(undefined);
             load().catch((e) => setError(e.message));
@@ -799,7 +805,146 @@ function CreateCampaign({
     </section>
   );
 }
-function CampaignDetail({ id, back }: { id: string; back: () => void }) {
+
+function ApprovedRewards({
+  campaign,
+  claims,
+  network,
+}: {
+  campaign: Campaign;
+  claims: Claim[];
+  network: string;
+}) {
+  const approved = getApprovedUnpaidClaims(claims);
+  const [feedback, setFeedback] = useState("");
+
+  async function copy(value: string, label: string) {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(value);
+      setFeedback(`${label} copied to clipboard.`);
+    } catch {
+      setFeedback(
+        "Clipboard access is unavailable. Select the visible NIM address and copy it manually.",
+      );
+    }
+  }
+
+  function downloadCsv() {
+    try {
+      const blob = new Blob([buildApprovedRewardsCsv(campaign, approved, network)], {
+        type: "text/csv;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const safeId =
+        campaign.id.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48) || "campaign";
+      anchor.href = url;
+      anchor.download = `nimclaim-approved-rewards-${safeId}.csv`;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setFeedback(
+        "CSV downloaded. It lists approved but unpaid rewards; it is not a payment receipt.",
+      );
+    } catch {
+      setFeedback("CSV export is unavailable in this browser. You can copy each settlement detail instead.");
+    }
+  }
+
+  return (
+    <section
+      className="panel approved-rewards"
+      aria-labelledby="approved-rewards-title"
+    >
+      <div className="approved-rewards-heading">
+        <div>
+          <p className="eyebrow">Settlement handoff</p>
+          <h2 id="approved-rewards-title">Approved rewards</h2>
+        </div>
+        <span className="approved-count">
+          {approved.length}{" "}
+          {approved.length === 1 ? "reward approved" : "rewards approved"}
+        </span>
+      </div>
+      <p>
+        These claims are approved but unpaid. Use the verified recipient
+        address and reward amount to arrange any transfer separately. NimClaim
+        does not reserve funds, send NIM or verify external transfers.
+      </p>
+      {approved.length === 0 ? (
+        <div className="approved-empty">
+          <strong>No approved rewards yet</strong>
+          <p>Approved claims will appear here with their recipient address and amount.</p>
+        </div>
+      ) : (
+        <div className="approved-rewards-list">
+          {approved.map((claim) => (
+            <article className="approved-reward-card" key={claim.id}>
+              <div className="approved-reward-topline">
+                <strong>
+                  {nim(campaign.amount)} <small>NIM</small>
+                </strong>
+                <span className="badge payment-ready">Approved · unpaid</span>
+              </div>
+              <p className="approved-reward-label">Verified recipient</p>
+              <code className="address approved-reward-address">
+                {claim.address}
+              </code>
+              <p className="approved-reward-reference">
+                Claim reference <code>{claim.id}</code>
+              </p>
+              <div className="actions approved-reward-actions">
+                <button
+                  className="secondary"
+                  type="button"
+                  onClick={() => void copy(claim.address, "Recipient address")}
+                >
+                  Copy address
+                </button>
+                <button
+                  className="quiet"
+                  type="button"
+                  onClick={() =>
+                    void copy(
+                      buildPayoutDetails(campaign, claim, network),
+                      "Settlement details",
+                    )
+                  }
+                >
+                  Copy settlement details
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      <div className="approved-rewards-footer">
+        <button
+          type="button"
+          disabled={approved.length === 0}
+          onClick={downloadCsv}
+        >
+          Download approved rewards CSV
+        </button>
+        <p className="muted" role="status" aria-live="polite">
+          {feedback || "The export is a handoff list only, not proof of payment."}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function CampaignDetail({
+  id,
+  back,
+  network,
+}: {
+  id: string;
+  back: () => void;
+  network: string;
+}) {
   const [data, setData] = useState<{
     campaign: Campaign;
     wallet: { address: string } | null;
@@ -997,6 +1142,9 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
           </div>
         )}
       </section>
+      {data.claimsOnly && (
+        <ApprovedRewards campaign={c} claims={data.claims} network={network} />
+      )}
       <Notice text={error} />
       <div className="toolbar">
         <h2>Claims & history</h2>
@@ -1264,7 +1412,27 @@ function Recipient({ token, config }: { token: string; config: Config }) {
             claimsOnly={config.claimsOnly}
           />
           {!data.claim.payment && (
-            <p>No NIM has been transferred through NimClaim.</p>
+            <>
+              <p>No NIM has been transferred through NimClaim.</p>
+              {config.claimsOnly && (
+                <div className="claim-next-step" role="note">
+                  <strong>
+                    {data.claim.status === "payment-ready"
+                      ? "Reward approved — payment outstanding"
+                      : data.claim.status === "pending"
+                        ? "Awaiting organiser review"
+                        : "Claim decision"}
+                  </strong>
+                  <p>
+                    {data.claim.status === "payment-ready"
+                      ? `Your claim is approved for ${nim(c.amount)} NIM. This records the organiser's decision, not a transfer. Contact the organiser to arrange settlement directly. NimClaim does not hold, send or verify NIM payments.`
+                      : data.claim.status === "pending"
+                        ? "Your signed claim has been received and is awaiting the organiser's review. No NIM has been reserved or sent."
+                        : "The organiser did not approve this claim. NimClaim has not sent any NIM. Contact the organiser if you need clarification."}
+                  </p>
+                </div>
+              )}
+            </>
           )}
           <PaymentStatus payment={data.claim.payment} />
         </section>
