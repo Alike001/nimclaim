@@ -56,8 +56,8 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
       { exact: false },
     ),
   ).toBeVisible();
-  await page.getByLabel("Organiser password").fill("browser-test-password");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByLabel("Workspace password").fill("browser-test-password");
+  await page.getByRole("button", { name: "Sign in to workspace", exact: true }).click();
   await page.getByRole("button", { name: "＋ Create campaign" }).click();
   await page
     .getByLabel("Title", { exact: true })
