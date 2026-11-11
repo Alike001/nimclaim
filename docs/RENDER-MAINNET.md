@@ -64,6 +64,7 @@ The multi-organiser release adds migration `004_multi_organiser.sql`. It does no
    npm run mainnet:backup -- .local/mainnet/admin.env /secure/nimclaim-mainnet-backup.key "/secure/backups/nimclaim-mainnet-$(date -u +%Y%m%dT%H%M%SZ).dump.enc"
    ```
    The command verifies the pinned MAINNET database marker and PostgreSQL major version, prints only campaign/invitation/claim/history counts, and writes an AES-256-GCM encrypted archive without a plaintext dump. Keep the key separately from the archive. Never upload either file or paste the key into chat. Confirm the archive exists before continuing.
+   Schedule a short maintenance window: the currently deployed single-organiser build is not compatible with the tenant columns added by migration 004. Do not accept organiser or contributor traffic between the migration and the new application deployment; complete the migration, grant verification and manual Render deploy back-to-back. If the upgrade is interrupted, keep the service unavailable until the reviewed multi-organiser build is deployed.
 2. From the repository version containing migration 004, run:
    ```sh
    npm run mainnet:migrate -- .local/mainnet/admin.env
