@@ -471,10 +471,13 @@ function Organiser({
             aria-labelledby="organiser-access-title"
           >
             <p className="eyebrow">Private organiser access</p>
-            <h1 id="organiser-access-title">Sign in to TESTNET</h1>
+            <h1 id="organiser-access-title">
+              {staging ? "Sign in to TESTNET" : "Sign in to manage campaigns"}
+            </h1>
             <p>
-              Create private invitations and review signed test claims. No
-              payment will be made.
+              {staging
+                ? "Create private invitations and review signed test claims. No payment will be made."
+                : "Manage campaigns, create private invitations and review signed wallet claims. No payment is sent from this workspace."}
             </p>
             <form onSubmit={login} aria-busy={busy}>
               <label htmlFor="organiser-password">Workspace password</label>
@@ -499,8 +502,9 @@ function Organiser({
                 </button>
               </div>
               <p className="auth-help" id="organiser-password-help">
-                Use the separate TESTNET organiser password. This is not your
-                Nimiq Pay PIN or recovery phrase.
+                {staging
+                  ? "Use the separate TESTNET organiser password. This is not your Nimiq Pay PIN or recovery phrase."
+                  : "Use the private NimClaim organiser password created during setup. It is not your Nimiq Pay PIN, wallet password or recovery phrase."}
               </p>
               <button type="submit" disabled={busy}>
                 {busy ? "Signing in…" : "Sign in to workspace"}
@@ -508,8 +512,9 @@ function Organiser({
             </form>
             <Notice text={error} />
             <p className="muted auth-access-note">
-              This is a separate TESTNET organiser account. Contributors use
-              their invitation links and never need this password.
+              {staging
+                ? "This is a separate TESTNET organiser account. Contributors use their invitation links and never need this password."
+                : "This deployment has one private organiser account. Only its owner can create campaigns or review claims. Contributors use their invitation links and never need this password."}
             </p>
             <p className="auth-contributor-note">
               <strong>Here to claim a reward?</strong> In Nimiq Pay, open Mini
