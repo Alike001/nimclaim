@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { HttpRpc, verifyBasicTransfer } from "../server/rpc.js";
+import { FailoverRpc, HttpRpc, verifyBasicTransfer } from "../server/rpc.js";
 import { testSigner } from "./helpers.js";
 
 test("RPC adapter only permits read methods and parses official result.data envelopes", async (t) => {
@@ -406,4 +406,30 @@ test("MAINNET failed execution or missing finality never becomes a paid receipt"
   const unknown = await verifyBasicTransfer(rpc, expected, hash, Date.now());
   assert.equal(unknown.state, "UNKNOWN");
   assert.equal(unknown.receipt, undefined);
+});
+
+test("read-only RPC failover tries the next endpoint and never exposes broadcast methods", async () => {
+  const calls: string[] = [];
+  const first = {
+    async call(method: string) {
+      calls.push(`first:${method}`);
+      throw new Error("HTTP 503");
+    },
+  };
+  const second = {
+    async call(method: string) {
+      calls.push(`second:${method}`);
+      return true;
+    },
+  };
+  const rpc = new FailoverRpc([first, second]);
+  assert.equal(await rpc.call("isConsensusEstablished", []), true);
+  assert.deepEqual(calls, [
+    "first:isConsensusEstablished",
+    "second:isConsensusEstablished",
+  ]);
+  await assert.rejects(
+    rpc.call("sendRawTransaction", ["deadbeef"]),
+    /Only read-only Nimiq RPC methods are allowed/,
+  );
 });
