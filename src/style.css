@@ -1004,6 +1004,15 @@ main {
   min-height: 52px;
   margin-top: 12px;
 }
+.wallet-login-secondary {
+  border: 1px solid #becfc3;
+  background: #fff;
+  color: #214d3e;
+}
+.wallet-login-secondary:hover:not(:disabled) {
+  background: #edf3eb;
+  filter: none;
+}
 .auth-legacy-link {
   border-top: 1px solid var(--nc-line);
   margin-top: 22px;
