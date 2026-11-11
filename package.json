@@ -29,6 +29,7 @@
     "staging:verify": "node --import tsx ops/staging-runtime-check.ts",
     "start:mainnet": "node --import tsx ops/mainnet-start.ts",
     "mainnet:credentials": "node --import tsx ops/mainnet-credentials.ts",
+    "mainnet:backup": "node --import tsx ops/mainnet-backup.ts",
     "mainnet:migrate": "node --import tsx ops/mainnet-admin.ts migrate",
     "mainnet:bootstrap": "node --import tsx ops/mainnet-admin.ts bootstrap",
     "mainnet:verify": "node --import tsx ops/mainnet-admin.ts verify",
