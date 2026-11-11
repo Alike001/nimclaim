@@ -68,28 +68,29 @@ function Landing({
       <div className="landing-hero">
         <div className="landing-copy">
           <p className="eyebrow landing-kicker">
-            A better way to recognise contributors
+            Verified contribution claims for Nimiq communities
           </p>
           <h1>
-            Reward the work.
+            Recognise the work.
             <br />
             <span>Verify the claim.</span>
           </h1>
           <p className="landing-lede">
-            Create a reward campaign, invite contributors privately, and review
-            real Nimiq Pay wallet signatures before approving a claim.
+            Create a campaign, invite contributors privately, and review real
+            Nimiq Pay wallet signatures. NimClaim records claim decisions; it
+            does not transfer NIM.
           </p>
           <div className="landing-actions">
             <a className="landing-primary" href="#organiser-access">
-              Open organiser workspace <span aria-hidden="true">↗</span>
+              Organiser sign in <span aria-hidden="true">↗</span>
             </a>
             <a className="landing-secondary" href="#workflow">
               How it works
             </a>
           </div>
           <p className="landing-hint">
-            Received an invitation? Open your private link inside Nimiq Pay. You
-            don't need an organiser password.
+            <strong>Contributor?</strong> You don't need an account or organiser
+            password. Open the complete invitation link inside Nimiq Pay.
           </p>
         </div>
         <aside className="landing-preview" aria-label="Reward claim workflow">
@@ -127,7 +128,7 @@ function Landing({
               <span className="landing-step-number">03</span>
               <div>
                 <strong>Organiser review</strong>
-                <span>Approved · awaiting external payment</span>
+                <span>Approved · unpaid</span>
               </div>
               <span className="landing-unpaid">UNPAID</span>
             </div>
@@ -151,8 +152,8 @@ function Landing({
             </span>
             <h3>01 / Create</h3>
             <p>
-              Set a reward and eligibility rules, then issue private contributor
-              invitations.
+              Set a campaign title, reward commitment, available slots and
+              expiry, then issue private contributor invitations.
             </p>
           </article>
           <article className="landing-feature">
@@ -216,9 +217,16 @@ export default function App() {
           </span>
           NimClaim
         </a>
-        <span className="network">
-          {config?.network.toUpperCase() ?? "Connecting…"}
-        </span>
+        <div className="header-actions">
+          {!hash.startsWith("#claim=") && hash !== "#diagnostics" && (
+            <a className="header-access" href="#organiser-access">
+              Organiser sign in
+            </a>
+          )}
+          <span className="network">
+            {config?.network.toUpperCase() ?? "Connecting…"}
+          </span>
+        </div>
       </header>
       <main>
         {config?.claimsOnly && (
@@ -299,6 +307,7 @@ function Organiser({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const load = useCallback(async () => {
     const r = await api("/campaigns");
     setCampaigns(r.campaigns);
@@ -331,36 +340,60 @@ function Organiser({
     return (
       <>
         {showLanding && <Landing network={network} claimsOnly={claimsOnly} />}
-        <section className="panel auth" id="organiser-access">
-          <p className="eyebrow">Organiser workspace</p>
-          <h1>{staging ? "TESTNET claim testing." : "Rewards start here."}</h1>
+        <section
+          className="panel auth"
+          id="organiser-access"
+          aria-labelledby="organiser-access-title"
+        >
+          <p className="eyebrow">Private organiser access</p>
+          <h1 id="organiser-access-title">
+            {staging ? "Sign in to TESTNET" : "Sign in to manage campaigns"}
+          </h1>
           <p>
             {staging
               ? "Create private invitations and review signed test claims. No payment will be made."
-              : "Create invitations, review signed claims and prepare contributor rewards."}
+              : "Manage campaigns, create private invitations and review signed wallet claims. No payment is sent from this workspace."}
           </p>
-          <form onSubmit={login}>
-            <label>
-              Organiser password
+          <form onSubmit={login} aria-busy={busy}>
+            <label htmlFor="organiser-password">Workspace password</label>
+            <div className="password-field">
               <input
+                id="organiser-password"
                 name="password"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
+                aria-describedby="organiser-password-help"
                 required
                 maxLength={256}
               />
-            </label>
-            <button disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
+              <button
+                className="password-toggle"
+                type="button"
+                aria-controls="organiser-password"
+                aria-pressed={showPassword}
+                onClick={() => setShowPassword((visible) => !visible)}
+              >
+                {showPassword ? "Hide" : "Show"}
+              </button>
+            </div>
+            <p className="auth-help" id="organiser-password-help">
+              {staging
+                ? "Use the separate TESTNET organiser password. This is not your Nimiq Pay PIN or recovery phrase."
+                : "Use the private NimClaim organiser password created during mainnet setup. It is not your Nimiq Pay PIN, wallet password or recovery phrase."}
+            </p>
+            <button type="submit" disabled={busy}>
+              {busy ? "Signing in…" : "Sign in to workspace"}
+            </button>
           </form>
           <Notice text={error} />
-          <p className="muted">
+          <p className="muted auth-access-note">
             {staging
-              ? "Use your separate staging organiser credentials."
-              : "Private organiser access. Only the campaign owner can create invitations or review claims. Contributors use their own invitation links and do not need this password."}
+              ? "This is a separate TESTNET organiser account. Contributors use their invitation links and never need this password."
+              : "This deployment has one private organiser account. Only its owner can create campaigns or review claims. Contributors use their invitation links and never need this password."}
           </p>
-          <p>
-            Received a reward invitation? Open the complete link inside Nimiq
-            Pay.
+          <p className="auth-contributor-note">
+            <strong>Here to claim a reward?</strong> Open the complete invitation
+            link inside Nimiq Pay. You do not need to sign in here.
           </p>
         </section>
       </>
