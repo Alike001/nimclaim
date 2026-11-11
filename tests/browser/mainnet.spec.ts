@@ -218,7 +218,7 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
   expect(csv).toContain(signer.address);
   expect(csv).toContain("0.12345");
   expect(csv).toContain("Approved · unpaid");
-  expect(csv).toContain("Not paid by NimClaim");
+  expect(csv).toContain("External transfer not verified by NimClaim");
   await expect(
     page.getByRole("button", { name: /Review.*payment/i }),
   ).toHaveCount(0);
@@ -230,7 +230,10 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     page.getByText("No NIM has been transferred through NimClaim."),
   ).toBeVisible();
   await expect(page.locator(".claim-next-step")).toContainText(
-    "This records the organiser's decision, not a transfer.",
+    "This is an approval, not proof of payment.",
+  );
+  await expect(page.locator(".claim-next-step")).toContainText(
+    "This status does not update for external transfers",
   );
   await expect(page.locator(".claim-next-step")).toContainText(
     "NimClaim does not hold, send or verify NIM payments.",

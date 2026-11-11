@@ -54,7 +54,7 @@ export function buildApprovedRewardsCsv(
         canonicalNim(campaign.amount),
         network.toUpperCase(),
         "Approved · unpaid",
-        "Not paid by NimClaim",
+        "External transfer not verified by NimClaim",
         approvedAt ? new Date(approvedAt).toISOString() : "",
       ];
     }),
@@ -80,7 +80,7 @@ export function buildPayoutDetails(
     `Recipient NIM address: ${claim.address}`,
     `Reward amount: ${canonicalNim(campaign.amount)} NIM`,
     "Claim status: Approved · unpaid",
-    "Settlement status: Not paid or verified by NimClaim",
+    "Settlement status: External transfer not verified by NimClaim",
     "Arrange any transfer separately. This text is not proof of payment.",
   ].join("\n");
 }
