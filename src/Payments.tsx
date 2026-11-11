@@ -219,7 +219,7 @@ export function CampaignWallet({
       </h2>
       {wallet ? (
         <>
-          <p>This is the authorised campaign wallet and expected sender for verified reward payments:</p>
+          <p>{claimsOnly ? "This is the authorised campaign wallet and expected sender for verified reward payments:" : "This campaign is permanently authorized to:"}</p>
           <code className="address">{wallet.address}</code>
         </>
       ) : (
