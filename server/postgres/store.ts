@@ -132,15 +132,20 @@ export class PostgresStore {
   async read(sql: string, args: unknown[] = []) {
     return transaction(this.pool, async (c) => (await c.query(sql, args)).rows);
   }
-  async organiserAuthChallenge() {
+  async organiserAuthChallenge(intent: "login" | "register" | "link") {
     if (this.network !== "mainnet")
       fail(404, "Wallet organiser access is available on MAINNET only.");
     const id = randomUUID();
     const expires = Date.now() + 5 * 60_000;
+    const purpose = {
+      login: "Sign in to your existing NimClaim organiser workspace",
+      register: "Create a new NimClaim organiser workspace",
+      link: "Link your previous NimClaim organiser workspace",
+    }[intent];
     const message = JSON.stringify({
       domain: "NimClaim/organiser/auth/v1",
-      purpose:
-        "Create or access your NimClaim organiser workspace. This is a signature only; no transaction or payment.",
+      intent,
+      purpose: `${purpose}. This is a signature only; no transaction or payment.`,
       origin: this.origin,
       network: this.network,
       nonce: randomToken(),
@@ -177,11 +182,13 @@ export class PostgresStore {
       }
       if (
         binding.domain !== "NimClaim/organiser/auth/v1" ||
+        !["login", "register", "link"].includes(binding.intent) ||
         binding.origin !== this.origin ||
         binding.network !== "mainnet" ||
         binding.expires !== challenge.expires
       )
         fail(409, "Wallet sign-in request belongs to another site or network.");
+      const intent = binding.intent as "login" | "register" | "link";
       const publicKey = input.publicKey.toLowerCase();
       const address = verifyOwner(challenge.message, publicKey, input.signature);
       if (!address) fail(401, "Nimiq Pay signature could not be verified.");
@@ -191,12 +198,29 @@ export class PostgresStore {
           [address],
         )
       ).rows[0];
-      if (organiser) {
+      if (intent === "login") {
+        if (input.legacyPassword !== undefined)
+          fail(400, "Do not enter a previous password when signing in.");
+        if (!organiser)
+          fail(404, "No workspace is linked to this wallet. Choose Create a new workspace.");
         if (organiser.public_key !== publicKey)
           fail(401, "This wallet does not match the registered organiser key.");
+      } else if (intent === "register") {
         if (input.legacyPassword !== undefined)
-          fail(409, "This wallet already has a workspace. Remove the old password and sign in again.");
-      } else if (input.legacyPassword !== undefined) {
+          fail(400, "A new workspace does not need a previous password.");
+        if (organiser)
+          fail(409, "This wallet already has a workspace. Choose Sign in instead.");
+        organiser = (
+          await c.query(
+            "INSERT INTO organisers (id,wallet_address,public_key,created) VALUES ($1,$2,$3,$4) RETURNING id,wallet_address,public_key,legacy,created",
+            [randomUUID(), address, publicKey, Date.now()],
+          )
+        ).rows[0];
+      } else {
+        if (organiser)
+          fail(409, "This wallet already has a workspace. Sign in instead.");
+        if (input.legacyPassword === undefined)
+          fail(400, "Enter the previous workspace password to link its records.");
         const legacy = (
           await c.query("SELECT password_hash FROM organiser WHERE id=1")
         ).rows[0];
@@ -220,13 +244,6 @@ export class PostgresStore {
         ).rows[0];
         if (!organiser)
           fail(409, "The previous workspace was linked elsewhere. Sign in again.");
-      } else {
-        organiser = (
-          await c.query(
-            "INSERT INTO organisers (id,wallet_address,public_key,created) VALUES ($1,$2,$3,$4) RETURNING id,wallet_address,public_key,legacy,created",
-            [randomUUID(), address, publicKey, Date.now()],
-          )
-        ).rows[0];
       }
       const consumed = await c.query(
         "UPDATE organiser_auth_challenges SET used=1 WHERE id=$1 AND used=0 RETURNING id",
