@@ -121,6 +121,8 @@ export class FailoverRpc implements Rpc {
   }
 
   async call(method: string, params: unknown[]) {
+    if (!READ_METHODS.has(method))
+      throw new Error("Only read-only Nimiq RPC methods are allowed.");
     let lastError: unknown;
     for (const provider of this.providers) {
       try {
