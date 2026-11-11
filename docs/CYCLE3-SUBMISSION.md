@@ -10,7 +10,7 @@
 ## Form details
 
 - **App name:** NimClaim
-- **Tagline:** Signed claims. Clear reward decisions.
+- **Tagline:** Signed claims. Verified NIM rewards.
 - **Category:** Pay
 - **Pricing:** Free
 - **Repository:** https://github.com/Alike001/nimclaim
