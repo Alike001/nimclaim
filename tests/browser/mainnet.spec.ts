@@ -114,8 +114,8 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
   await expect(page.locator("header .network")).toHaveText("MAINNET");
   await expect(
     page.getByText(
-      "Payments are unavailable; approval does not transfer NIM.",
-      { exact: false },
+      "MAINNET supports signed claims and organiser review only. NimClaim does not send, track or verify NIM payouts.",
+      { exact: true },
     ),
   ).toBeVisible();
   await page
