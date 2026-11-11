@@ -57,7 +57,7 @@ test("CSV preserves exact NIM precision and labels settlement as unpaid", () => 
   assert.ok(csv.includes("12.34567"));
   assert.ok(csv.includes("MAINNET"));
   assert.ok(csv.includes("Approved · unpaid"));
-  assert.ok(csv.includes("Not paid by NimClaim"));
+  assert.ok(csv.includes("External transfer not verified by NimClaim"));
   assert.ok(csv.includes("2023-11-14T22:15:00.000Z"));
   assert.ok(!csv.includes("claim-pending"));
 });
@@ -77,5 +77,6 @@ test("copied settlement details include exact recipient, amount and unpaid warni
   assert.ok(details.includes(approved.address));
   assert.ok(details.includes("12.34567 NIM"));
   assert.ok(details.includes("Approved · unpaid"));
+  assert.ok(details.includes("External transfer not verified by NimClaim"));
   assert.ok(details.includes("not proof of payment"));
 });

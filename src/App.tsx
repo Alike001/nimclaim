@@ -850,7 +850,7 @@ function ApprovedRewards({
       anchor.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       setFeedback(
-        "CSV downloaded. It lists approved but unpaid rewards; it is not a payment receipt.",
+        "CSV downloaded. This list does not verify payments made outside NimClaim and is not a payment receipt.",
       );
     } catch {
       setFeedback(
@@ -875,9 +875,21 @@ function ApprovedRewards({
         </span>
       </div>
       <p>
-        These claims are approved but unpaid. Use the verified recipient address
-        and reward amount to arrange any transfer separately. NimClaim does not
-        reserve funds, send NIM or verify external transfers.
+        These claims are approved in NimClaim, with no verified payment recorded
+        here. Use the recipient address and amount to arrange settlement outside
+        NimClaim. A transfer you send separately will not change this status.
+      </p>
+      <p className="muted">
+        Already sent NIM? Check the transaction hash, recipient, amount and
+        finality on{" "}
+        <a
+          href="https://nimiq.watch/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          a Nimiq mainnet explorer
+        </a>
+        . NimClaim does not hold funds or verify external transfers.
       </p>
       {approved.length === 0 ? (
         <div className="approved-empty">
@@ -939,7 +951,7 @@ function ApprovedRewards({
         </button>
         <p className="muted" role="status" aria-live="polite">
           {feedback ||
-            "The export is a handoff list only, not proof of payment."}
+            "No external payments are verified by this export; it is not a receipt."}
         </p>
       </div>
     </section>
@@ -1428,14 +1440,14 @@ function Recipient({ token, config }: { token: string; config: Config }) {
                 <div className="claim-next-step" role="note">
                   <strong>
                     {data.claim.status === "payment-ready"
-                      ? "Reward approved — payment outstanding"
+                      ? "Reward approved — payment not verified here"
                       : data.claim.status === "pending"
                         ? "Awaiting organiser review"
                         : "Claim decision"}
                   </strong>
                   <p>
                     {data.claim.status === "payment-ready"
-                      ? `Your claim is approved for ${nim(c.amount)} NIM. This records the organiser's decision, not a transfer. Contact the organiser to arrange settlement directly. NimClaim does not hold, send or verify NIM payments.`
+                      ? `Your claim is approved for ${nim(c.amount)} NIM. This is an approval, not proof of payment. If the organiser sends NIM outside NimClaim, ask for the transaction hash and independently check the recipient, amount and finality. This status does not update for external transfers; NimClaim does not hold, send or verify NIM payments.`
                       : data.claim.status === "pending"
                         ? "Your signed claim has been received and is awaiting the organiser's review. No NIM has been reserved or sent."
                         : "The organiser did not approve this claim. NimClaim has not sent any NIM. Contact the organiser if you need clarification."}
