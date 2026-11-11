@@ -13,10 +13,17 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     if (url.pathname === "/api/auth/challenge") {
       const id = "00000000-0000-4000-8000-000000000001";
       const expires = Date.now() + 300_000;
+      const intent = (request.postDataJSON() as { intent: string }).intent;
+      const purpose = {
+        login: "Sign in to your existing NimClaim organiser workspace",
+        register: "Create a new NimClaim organiser workspace",
+        link: "Link your previous NimClaim organiser workspace",
+      }[intent];
       const message = JSON.stringify({
         domain: "NimClaim/organiser/auth/v1",
+        intent,
         purpose:
-          "Create or access your NimClaim organiser workspace. This is a signature only; no transaction or payment.",
+          purpose + ". This is a signature only; no transaction or payment.",
         origin: url.origin,
         network: "mainnet",
         nonce: "a".repeat(64),
@@ -113,7 +120,7 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     ),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: "Continue with Nimiq Pay", exact: true })
+    .getByRole("button", { name: "Create a new workspace", exact: true })
     .click();
   await expect(page.locator("header .header-access")).toHaveText("Workspace");
   await page.locator("header .header-access").click();
