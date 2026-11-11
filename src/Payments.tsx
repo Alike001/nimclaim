@@ -26,7 +26,9 @@ export function PaymentStatus({
     <section className="payment-status" aria-label="Payment status">
       <h3>
         {paid
-          ? "Paid · independently verified"
+          ? payment.receipt?.source === "external"
+            ? "Paid · verified on-chain"
+            : "Paid · independently verified"
           : payment.state === "FAILED"
             ? "Failed · reward unpaid"
             : payment.state === "SUBMITTING"
@@ -35,7 +37,7 @@ export function PaymentStatus({
       </h3>
       <p>{payment.reason}</p>
       <dl className="payment-facts">
-        <dt>Expected sender</dt>
+        <dt>{payment.receipt?.source === "external" ? "Verified sender" : "Expected sender"}</dt>
         <dd>{payment.intent.sender}</dd>
         <dt>Recipient</dt>
         <dd>{payment.intent.recipient}</dd>
@@ -58,7 +60,8 @@ export function PaymentStatus({
             block {payment.receipt.macroNumber}
           </p>
           <p>
-            Verified {date(payment.receipt.verifiedAt)} against independent RPC.
+            Verified {date(payment.receipt.verifiedAt)} against independent MAINNET RPC.
+            {payment.receipt.source === "external" ? " The transfer was sent separately through Nimiq Pay; NimClaim did not broadcast or custody funds." : ""}
           </p>
           <code className="address">{payment.receipt.hash}</code>
           {payment.explorerUrl && (
@@ -81,6 +84,88 @@ export function PaymentStatus({
           </li>
         ))}
       </ol>
+    </section>
+  );
+}
+
+export function ExternalPaymentVerifier({
+  claim,
+  amount,
+  enabled,
+  reload,
+}: {
+  claim: Claim;
+  amount: number;
+  enabled: boolean;
+  reload: () => Promise<void>;
+}) {
+  const [hash, setHash] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  if (claim.payment) return <PaymentStatus payment={claim.payment} />;
+
+  async function verify(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await api(`/claims/${claim.id}/payment/verify`, {
+        hash: hash.trim().toLowerCase(),
+      });
+      setHash("");
+      await reload();
+      setNotice("NIM transfer verified and recorded on MAINNET.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="panel manual-payment-verifier">
+      <h3>Verify NIM payment</h3>
+      <p>
+        Send exactly {nim(amount)} NIM from this campaign's authorised organiser
+        wallet to the contributor using Nimiq Pay. Then paste the transaction
+        hash. NimClaim checks the sender, recipient, exact amount, execution and
+        MAINNET finality. It never sends the transfer.
+      </p>
+      {enabled ? (
+        <form onSubmit={verify}>
+          <label>
+            Nimiq MAINNET transaction hash
+            <input
+              value={hash}
+              onChange={(event) => setHash(event.target.value)}
+              required
+              minLength={64}
+              maxLength={64}
+              pattern="[a-fA-F0-9]{64}"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder="Paste the 64-character transaction hash"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={busy || !/^[a-f0-9]{64}$/i.test(hash.trim())}
+          >
+            {busy ? "Verifying on MAINNET…" : "Verify NIM payment"}
+          </button>
+        </form>
+      ) : (
+        <p className="muted" role="status">
+          Read-only MAINNET verification is not configured. This claim remains
+          approved and unpaid until the transfer can be independently verified.
+        </p>
+      )}
+      {error && <p role="alert" className="notice">{error}</p>}
+      {notice && <p role="status" aria-live="polite">{notice}</p>}
     </section>
   );
 }
