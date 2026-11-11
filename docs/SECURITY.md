@@ -1,13 +1,13 @@
 # Security and API contract
 
-This is a development vertical slice, not an audited payments service. Native payouts require organiser authorisation and independently verified HTLC funding. Spending remains off by default, and mainnet is explicitly blocked. A paid status requires independently verified, finalized successful execution.
+NimClaim is deployed as a claim-only MAINNET Mini App, not an audited payments service. Organiser access and contributor claims use Nimiq Pay wallet signatures. MAINNET spending, escrow and automated payment verification are explicitly disabled. The separate SQLite TESTNET payout implementation is research/testing code and is not enabled by the hosted MAINNET runtime.
 
 ## Boundaries
 
 - Setup generates 256-bit random organiser credentials; passwords are salted and hashed with scrypt. Login issues a 256-bit random HttpOnly, SameSite=Strict session cookie with an eight-hour absolute expiry; only its SHA-256 hash is stored. HTTPS also sets Secure. Logout revokes the session (SQLite deletes it; PostgreSQL expires it without DELETE). Sessions survive server restarts and expire server-side.
 - Every POST requires the exact configured Origin and JSON content type; request bodies are capped at 16 KiB. Zod validates strict input shapes and rejects extra signer/address fields. Administrative APIs require a valid session. Public claim APIs require a 256-bit invitation token. There is no CORS allowance.
 - No third-party frontend resources or analytics. Production CSP restricts resources to the app's origin. Responses are no-store and no-referrer; links carry tokens in fragments. Application error logs do not contain request bodies. Infrastructure must also avoid logging bodies, cookies and signatures.
-- Local SQLite development uses process-local IP rate limits: 10 login requests/minute; 180 other API requests/minute. No forwarded IP headers are trusted. Behind a reverse proxy these limits are shared by all users; durable per-client limiting and carefully configured proxy trust are required for public deployment. Login work uses synchronous scrypt, suitable for this bounded local installation.
+- Local SQLite development uses process-local IP rate limits: 10 login requests/minute; 180 other API requests/minute. No forwarded IP headers are trusted. Behind a reverse proxy these SQLite limits are shared by all users; durable per-client limiting and carefully configured proxy trust are required for a public deployment. The active MAINNET PostgreSQL runtime uses shared database-backed minute buckets, but these are deployment-wide rather than full per-client quotas; edge abuse controls remain an operational follow-up. Login work uses synchronous scrypt, suitable for this bounded local installation.
 
 ## Wallet protocol
 
