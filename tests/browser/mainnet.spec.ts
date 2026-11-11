@@ -201,7 +201,7 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     page.getByRole("heading", { name: "Approved rewards" }),
   ).toBeVisible();
   await expect(
-    page.getByText("1 reward approved", { exact: true }),
+    page.getByText("1 approved · 0 paid · 1 unpaid", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Copy settlement details" }),
