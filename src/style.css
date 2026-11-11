@@ -999,6 +999,33 @@ main {
   filter: none;
   background: #edf3eb;
 }
+.wallet-login {
+  width: 100%;
+  min-height: 52px;
+  margin-top: 12px;
+}
+.auth-legacy-link {
+  border-top: 1px solid var(--nc-line);
+  margin-top: 22px;
+  padding-top: 16px;
+}
+.auth-legacy-link summary {
+  color: #245a47;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.auth-legacy-link p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.auth-legacy-link label {
+  margin-top: 14px;
+}
+.auth-legacy-link input {
+  margin-top: 7px;
+}
 .auth-help {
   color: #61766b;
   font-size: 12px;
