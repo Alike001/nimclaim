@@ -209,8 +209,12 @@ function client(apiPort: number, appOrigin = origin) {
       cookie = r.headers["set-cookie"]![0].split(";")[0];
       return r;
     },
-    async walletLogin(signer = testSigner(), legacyPassword?: string) {
-      const challenge = await call("/api/auth/challenge", {});
+    async walletLogin(
+      signer = testSigner(),
+      intent: "login" | "register" | "link" = "register",
+      legacyPassword?: string,
+    ) {
+      const challenge = await call("/api/auth/challenge", { intent });
       assert.equal(challenge.status, 201);
       const proof = {
         challengeId: challenge.body.id,
@@ -1737,7 +1741,7 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
     404,
   );
   const owner = testSigner();
-  const login = await organiser.walletLogin(owner, password);
+  const login = await organiser.walletLogin(owner, "link", password);
   assert.match(
     login.headers["set-cookie"]![0],
     /^nimclaim_mainnet_session=.*; Secure$/,
@@ -1765,7 +1769,7 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
   };
   const otherSession = client(api.port, appOrigin);
   const otherOwner = testSigner();
-  await otherSession.walletLogin(otherOwner);
+  await otherSession.walletLogin(otherOwner, "register");
   assert.deepEqual(
     (await otherSession.call("/api/campaigns")).body.campaigns,
     [],
@@ -1846,7 +1850,7 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
   );
   for (const port of [api.port, api.backend]) {
     const caller = client(port, appOrigin);
-    await caller.walletLogin(testSigner());
+    await caller.walletLogin(testSigner(), "register");
     const attempt = await caller.call(
       `/api/claims/${claimId}/payment/reserve`,
       {},
@@ -1873,7 +1877,7 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
     ).body.authenticated,
     true,
   );
-  await existing.walletLogin(owner);
+  await existing.walletLogin(owner, "login");
   const detail = (await existing.call(`/api/campaigns/${c.id}`)).body;
   assert.equal(detail.wallet.address, owner.address);
   assert.equal(detail.claims[0].status, "payment-ready");
