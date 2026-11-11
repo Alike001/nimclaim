@@ -625,8 +625,8 @@ function Organiser({
                   : "Start your first campaign."}
               </h2>
               <p>
-                Create a campaign, then send each contributor their own
-                private invitation link.
+                Create a campaign, then send each contributor their own private
+                invitation link.
               </p>
               <button onClick={() => setCreating(true)}>
                 Create your first campaign
