@@ -199,6 +199,202 @@ export type Verification = {
   receipt?: Receipt;
 };
 export class EvidenceMismatch extends Error {}
+export type BasicTransferExpected = {
+  sender: string;
+  recipient: string;
+  amount: number;
+  network: "mainnet";
+};
+
+function matchesBasicTransfer(
+  tx: z.infer<typeof transaction>,
+  expected: BasicTransferExpected,
+  hash: string,
+) {
+  if (
+    tx.hash !== hash ||
+    tx.fromType !== 0 ||
+    tx.toType !== 0 ||
+    tx.flags !== 0 ||
+    tx.senderData !== "" ||
+    tx.recipientData !== "" ||
+    tx.networkId !== chain.mainnet.id ||
+    address(tx.from) !== address(expected.sender) ||
+    address(tx.to) !== address(expected.recipient) ||
+    tx.value !== expected.amount ||
+    tx.validityStartHeight > tx.blockNumber ||
+    tx.blockNumber <= 0
+  ) {
+    throw new EvidenceMismatch(
+      "Transaction does not match the campaign payer, recipient, exact NIM amount and MAINNET network.",
+    );
+  }
+}
+
+/**
+ * Verifies a transfer already sent in Nimiq Pay. This function is read-only:
+ * it never creates, signs, broadcasts or retries a transaction.
+ */
+export async function verifyBasicTransfer(
+  rpc: Rpc,
+  expected: BasicTransferExpected,
+  hash: string,
+  now: number,
+): Promise<Verification> {
+  hashSchema.parse(hash);
+  try {
+    if ((await rpc.call("isConsensusEstablished", [])) !== true)
+      return {
+        state: "UNKNOWN",
+        reason: "The independent MAINNET node has not established consensus.",
+      };
+    const head = integer.parse(await rpc.call("getBlockNumber", []));
+    const headBlock = z
+      .object({
+        number: integer,
+        hash: hashSchema,
+        network: z.literal(chain.mainnet.name),
+      })
+      .passthrough()
+      .parse(await rpc.call("getBlockByNumber", [head, false]));
+    if (headBlock.number !== head)
+      return {
+        state: "UNKNOWN",
+        reason: "The independent node returned an inconsistent MAINNET head.",
+      };
+
+    const tx = transaction.parse(
+      await rpc.call("getTransactionByHash", [hash]),
+    );
+    matchesBasicTransfer(tx, expected, hash);
+    if (tx.blockNumber > head)
+      return {
+        state: "UNKNOWN",
+        reason: "Transaction inclusion is ahead of the verified MAINNET head.",
+      };
+
+    const blockSchema = z.object({
+      number: integer,
+      hash: hashSchema,
+      network: z.literal(chain.mainnet.name),
+      type: z.literal("micro"),
+      transactions: z.array(z.unknown()),
+    });
+    const block = blockSchema.parse(
+      await rpc.call("getBlockByNumber", [tx.blockNumber, true]),
+    );
+    if (block.number !== tx.blockNumber)
+      throw new EvidenceMismatch("Transaction block number mismatch.");
+    const included = block.transactions.find(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        "hash" in item &&
+        item.hash === hash,
+    );
+    if (!included)
+      return {
+        state: "UNKNOWN",
+        reason: "Transaction is not present in its canonical MAINNET block.",
+      };
+    const canonical = transaction.parse(included);
+    matchesBasicTransfer(canonical, expected, hash);
+    if (
+      canonical.blockNumber !== tx.blockNumber ||
+      canonical.executionResult !== tx.executionResult ||
+      canonical.proof !== tx.proof ||
+      canonical.validityStartHeight !== tx.validityStartHeight
+    )
+      return {
+        state: "UNKNOWN",
+        reason: "RPC transaction evidence changed during verification.",
+      };
+
+    const macroNumber = integer.parse(
+      await rpc.call("getMacroBlockAfter", [tx.blockNumber]),
+    );
+    if (macroNumber > head || macroNumber <= tx.blockNumber)
+      return {
+        state: "UNKNOWN",
+        reason: "The macro block needed to establish finality is not available yet.",
+      };
+    const macro = z
+      .object({
+        number: integer,
+        hash: hashSchema,
+        network: z.literal(chain.mainnet.name),
+        type: z.literal("macro"),
+        justification: z.record(z.string(), z.unknown()),
+      })
+      .parse(await rpc.call("getBlockByNumber", [macroNumber, false]));
+    if (macro.number !== macroNumber || !Object.keys(macro.justification).length)
+      return {
+        state: "UNKNOWN",
+        reason: "MAINNET macro-block finality evidence is unavailable.",
+      };
+
+    const finalBlock = blockSchema.parse(
+      await rpc.call("getBlockByNumber", [tx.blockNumber, true]),
+    );
+    const finalTx = transaction.safeParse(
+      finalBlock.transactions.find(
+        (item) =>
+          typeof item === "object" &&
+          item !== null &&
+          "hash" in item &&
+          item.hash === hash,
+      ),
+    );
+    if (
+      !finalTx.success ||
+      finalTx.data.executionResult !== tx.executionResult ||
+      finalTx.data.blockNumber !== tx.blockNumber ||
+      finalTx.data.proof !== tx.proof ||
+      finalTx.data.validityStartHeight !== tx.validityStartHeight ||
+      finalBlock.hash !== block.hash ||
+      finalBlock.number !== block.number
+    )
+      return {
+        state: "UNKNOWN",
+        reason: "Canonical MAINNET block evidence changed during finality verification.",
+      };
+    matchesBasicTransfer(finalTx.data, expected, hash);
+
+    if (!tx.executionResult)
+      return {
+        state: "FAILED",
+        reason: "The transaction was finalized but execution failed; no reward was paid.",
+      };
+    return {
+      state: "CONFIRMED",
+      reason:
+        "Exact external NIM transfer independently verified and finalized. NimClaim did not broadcast or custody funds.",
+      receipt: {
+        hash,
+        blockNumber: tx.blockNumber,
+        blockHash: block.hash,
+        macroNumber,
+        macroHash: macro.hash,
+        executionResult: true,
+        verifiedAt: now,
+        sender: address(tx.from),
+        recipient: address(tx.to),
+        amount: tx.value,
+        fee: tx.fee,
+        network: "mainnet",
+        source: "external",
+      },
+    };
+  } catch (error) {
+    if (error instanceof EvidenceMismatch) throw error;
+    return {
+      state: "UNKNOWN",
+      reason:
+        "The transaction is not indexed, does not yet have finality evidence, or the independent MAINNET RPC is unavailable. No payment was recorded.",
+    };
+  }
+}
+
 function matches(
   tx: z.infer<typeof transaction>,
   intent: Intent,
