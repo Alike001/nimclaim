@@ -910,3 +910,156 @@ main {
     transition: none;
   }
 }
+
+
+/* Mainnet first-run clarity and accessible organiser sign-in. */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.header-access {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid #c7d8ca;
+  border-radius: 999px;
+  background: #fff;
+  color: #1d5b48;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+.header-access:hover {
+  background: #eaf2e9;
+  border-color: #a9c5b2;
+}
+.landing-hero {
+  gap: clamp(24px, 4vw, 50px);
+  padding: clamp(14px, 2.5vw, 30px) 0 36px;
+}
+.landing-kicker {
+  margin-bottom: 14px;
+}
+.landing-copy h1 {
+  font-size: clamp(40px, 5vw, 64px);
+  margin-bottom: 18px;
+}
+.landing-lede {
+  line-height: 1.6;
+  margin-bottom: 18px;
+}
+.landing-hint {
+  margin-top: 14px;
+}
+.landing-hint strong {
+  color: var(--nc-ink);
+}
+.auth {
+  max-width: 560px;
+  margin: 24px auto 28px;
+  padding: 32px;
+}
+.auth h1 {
+  font-size: clamp(28px, 3.2vw, 38px);
+  letter-spacing: -0.04em;
+  line-height: 1.15;
+  margin-bottom: 14px;
+}
+.auth form {
+  gap: 14px;
+  margin-top: 20px;
+}
+.password-field {
+  position: relative;
+  width: 100%;
+}
+.password-field input {
+  padding-right: 76px;
+}
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  transform: translateY(-50%);
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #245a47;
+  font-size: 13px;
+  font-weight: 700;
+}
+.password-toggle:hover:not(:disabled) {
+  filter: none;
+  background: #edf3eb;
+}
+.auth-help {
+  color: #61766b;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: -6px 0 0;
+}
+.auth-access-note {
+  margin-top: 18px;
+  line-height: 1.65;
+}
+.auth-contributor-note {
+  border-top: 1px solid var(--nc-line);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 16px 0 0;
+  padding-top: 14px;
+}
+.auth-contributor-note strong {
+  color: var(--nc-ink);
+}
+@media (max-width: 600px) {
+  header {
+    gap: 10px;
+    padding: 16px 18px;
+  }
+  .brand {
+    gap: 7px;
+    font-size: 20px;
+  }
+  .mark {
+    width: 32px;
+    height: 35px;
+    font-size: 17px;
+  }
+  .header-actions {
+    gap: 7px;
+  }
+  .header-access {
+    min-height: 36px;
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+  .header-actions .network {
+    padding: 4px 6px;
+    font-size: 9px;
+  }
+  .landing-hero {
+    padding-top: 16px;
+    padding-bottom: 30px;
+  }
+  .landing-copy h1 {
+    font-size: clamp(38px, 10vw, 52px);
+  }
+  .auth {
+    padding: 22px;
+    margin: 12px auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .header-access {
+    transition: none;
+  }
+}
