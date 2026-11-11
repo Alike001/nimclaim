@@ -81,12 +81,7 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
           network: store.network,
           origin: store.origin,
           staging: !mainnet,
-          ...(mainnet
-            ? {
-                claimsOnly: true,
-                manualPaymentVerification: !!store.rpc,
-              }
-            : {}),
+          ...(mainnet ? { claimsOnly: true } : {}),
           mobileTest: false,
           manualPaymentVerification: mainnet && !!store.rpc,
         });
@@ -305,7 +300,12 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
         return send(200, {
           campaign,
           staging: !mainnet,
-          ...(mainnet ? { claimsOnly: true } : {}),
+          ...(mainnet
+            ? {
+                claimsOnly: true,
+                manualPaymentVerification: !!store.rpc,
+              }
+            : {}),
           wallet:
             (
               await store.read(
