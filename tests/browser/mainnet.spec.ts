@@ -163,7 +163,17 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     page.getByText("This campaign is permanently authorized to:"),
   ).toBeVisible();
   await page.getByRole("button", { name: "Create unique invitation" }).click();
-  const url = await page.getByLabel("Save this invitation now.").inputValue();
+  const invitationField = page.getByLabel(
+    "Save your private invitation link before leaving this page.",
+  );
+  const url = await invitationField.inputValue();
+  await page
+    .getByRole("button", { name: "I have saved this link", exact: true })
+    .click();
+  await expect(invitationField).toHaveValue(url);
+  await expect(page.locator(".link-status")).toContainText(
+    "Saved. Keep this link private.",
+  );
   await page.goto(url);
   await page
     .getByRole("button", { name: "Connect Nimiq Pay", exact: true })
