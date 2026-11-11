@@ -103,15 +103,16 @@ function Landing({
       <div className="landing-hero">
         <div className="landing-copy">
           <p className="eyebrow landing-kicker">
-            Wallet-signed reward claims for Nimiq communities
+            Wallet-signed claims and verified NIM rewards for Nimiq communities
           </p>
           <h1>
-            Recognise the work.
+            Approve rewards.
             <br />
-            <span>Verify the wallet.</span>
+            <span>Verify NIM payments.</span>
           </h1>
           <p className="landing-lede">
-            Use Nimiq Pay signatures to verify wallets and review reward claims.
+            Organisers pay through Nimiq Pay. NimClaim verifies the sender,
+            recipient, exact amount and finality from the transaction hash.
           </p>
           <div className="landing-actions">
             <a className="landing-primary" href="#organiser-access">
