@@ -67,7 +67,9 @@ function Landing({
     <section className="landing" aria-label="About NimClaim">
       <div className="landing-hero">
         <div className="landing-copy">
-          <p className="eyebrow landing-kicker">A better way to recognise contributors</p>
+          <p className="eyebrow landing-kicker">
+            A better way to recognise contributors
+          </p>
           <h1>
             Reward the work.
             <br />
@@ -86,8 +88,8 @@ function Landing({
             </a>
           </div>
           <p className="landing-hint">
-            Received an invitation? Open your private link inside Nimiq Pay.
-            You don't need an organiser password.
+            Received an invitation? Open your private link inside Nimiq Pay. You
+            don't need an organiser password.
           </p>
         </div>
         <aside className="landing-preview" aria-label="Reward claim workflow">
@@ -98,14 +100,18 @@ function Landing({
             </span>
           </div>
           <div className="landing-preview-body">
-            <p className="landing-preview-caption">Every approval has a history.</p>
+            <p className="landing-preview-caption">
+              Every approval has a history.
+            </p>
             <div className="landing-preview-step">
               <span className="landing-step-number">01</span>
               <div>
                 <strong>Private invitation</strong>
                 <span>One link, one reward slot</span>
               </div>
-              <span className="landing-step-check" aria-hidden="true">✓</span>
+              <span className="landing-step-check" aria-hidden="true">
+                ✓
+              </span>
             </div>
             <div className="landing-preview-step">
               <span className="landing-step-number">02</span>
@@ -113,7 +119,9 @@ function Landing({
                 <strong>Verified wallet signature</strong>
                 <span>No transfer required to claim</span>
               </div>
-              <span className="landing-step-check" aria-hidden="true">✓</span>
+              <span className="landing-step-check" aria-hidden="true">
+                ✓
+              </span>
             </div>
             <div className="landing-preview-step">
               <span className="landing-step-number">03</span>
@@ -138,19 +146,34 @@ function Landing({
         </div>
         <div className="landing-features">
           <article className="landing-feature">
-            <span className="landing-feature-icon" aria-hidden="true">✦</span>
+            <span className="landing-feature-icon" aria-hidden="true">
+              ✦
+            </span>
             <h3>01 / Create</h3>
-            <p>Set a reward and eligibility rules, then issue private contributor invitations.</p>
+            <p>
+              Set a reward and eligibility rules, then issue private contributor
+              invitations.
+            </p>
           </article>
           <article className="landing-feature">
-            <span className="landing-feature-icon" aria-hidden="true">◇</span>
+            <span className="landing-feature-icon" aria-hidden="true">
+              ◇
+            </span>
             <h3>02 / Verify</h3>
-            <p>Contributors sign a one-time message in Nimiq Pay. No NIM is spent to claim.</p>
+            <p>
+              Contributors sign a one-time message in Nimiq Pay. No NIM is spent
+              to claim.
+            </p>
           </article>
           <article className="landing-feature">
-            <span className="landing-feature-icon" aria-hidden="true">✓</span>
+            <span className="landing-feature-icon" aria-hidden="true">
+              ✓
+            </span>
             <h3>03 / Review</h3>
-            <p>Organisers review and approve or reject claims. Everyone can see the resulting status.</p>
+            <p>
+              Organisers review and approve or reject claims. Everyone can see
+              the resulting status.
+            </p>
           </article>
         </div>
       </div>
@@ -163,7 +186,9 @@ function Landing({
               : "Approval marks a reward as ready for payment, not paid. Native sending remains blocked pending sender-binding and independent settlement verification."}
           </p>
         </div>
-        <a href="#organiser-access">Organiser access <span aria-hidden="true">→</span></a>
+        <a href="#organiser-access">
+          Organiser access <span aria-hidden="true">→</span>
+        </a>
       </div>
     </section>
   );
@@ -307,36 +332,37 @@ function Organiser({
       <>
         {showLanding && <Landing network={network} claimsOnly={claimsOnly} />}
         <section className="panel auth" id="organiser-access">
-        <p className="eyebrow">Organiser workspace</p>
-        <h1>{staging ? "TESTNET claim testing." : "Rewards start here."}</h1>
-        <p>
-          {staging
-            ? "Create private invitations and review signed test claims. No payment will be made."
-            : "Create invitations, review signed claims and prepare contributor rewards."}
-        </p>
-        <form onSubmit={login}>
-          <label>
-            Organiser password
-            <input
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              maxLength={256}
-            />
-          </label>
-          <button disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
-        </form>
-        <Notice text={error} />
-        <p className="muted">
-          {staging
-            ? "Use your separate staging organiser credentials."
-            : "Private organiser access. Only the campaign owner can create invitations or review claims. Contributors use their own invitation links and do not need this password."}
-        </p>
-        <p>
-          Received a reward invitation? Open the complete link inside Nimiq Pay.
-        </p>
-      </section>
+          <p className="eyebrow">Organiser workspace</p>
+          <h1>{staging ? "TESTNET claim testing." : "Rewards start here."}</h1>
+          <p>
+            {staging
+              ? "Create private invitations and review signed test claims. No payment will be made."
+              : "Create invitations, review signed claims and prepare contributor rewards."}
+          </p>
+          <form onSubmit={login}>
+            <label>
+              Organiser password
+              <input
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                maxLength={256}
+              />
+            </label>
+            <button disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
+          </form>
+          <Notice text={error} />
+          <p className="muted">
+            {staging
+              ? "Use your separate staging organiser credentials."
+              : "Private organiser access. Only the campaign owner can create invitations or review claims. Contributors use their own invitation links and do not need this password."}
+          </p>
+          <p>
+            Received a reward invitation? Open the complete link inside Nimiq
+            Pay.
+          </p>
+        </section>
       </>
     );
   return (
