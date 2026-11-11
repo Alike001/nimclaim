@@ -39,7 +39,7 @@ I built NimClaim because a reward promise, an approval and a payment are three d
 - [x] Organiser reported sending 10 NIM separately from Nimiq Pay after approval
 - [x] MAINNET read-only verifier checks exact sender, recipient, amount and macro finality
 - [ ] Supply and verify the separate 10 NIM transaction hash before claiming that transfer is confirmed
-- [ ] Automated payout/escrow and independent settlement verifier (out of scope for this release)
+- [ ] Automated wallet payouts, escrow and refunds (out of scope; read-only verification of externally sent MAINNET transfers is implemented)
 - [ ] Final Cycle III submission PR accepted/merged (not yet established)
 
 ## Suggested 3-minute demo outline
@@ -66,7 +66,7 @@ Do **not** edit the database or set a paid flag manually. A hash alone is not pr
 
 1. Reopen the public app in Nimiq Pay, confirm MAINNET, and sign into the existing workspace.
 2. Reopen the existing approved campaign; check that the recipient, amount and event history survive refresh.
-3. Copy the recipient details, download CSV and inspect the external-payment-unverified field.
+3. Copy the recipient details, download CSV and inspect the exact paid/unpaid settlement status and verified transaction reference.
 4. Reopen the contributor invitation and confirm the verified payment receipt appears after successful verification.
 5. Verify that no NimClaim button initiates a wallet payment prompt; only the read-only hash-verification endpoint is exposed.
 6. Check the README, public repository and app URL.
@@ -76,7 +76,7 @@ Do **not** edit the database or set a paid flag manually. A hash alone is not pr
 
 The official scoring guide weights functionality, reliability and usefulness at 45 points; Nimiq Pay and Nimiq integration at 25; real usage at 15; design and UX at 10; and builder promotion at 5. The Community Council also looks for a clear target audience, a real need, stability, completeness and repeat value.
 
-- **Functionality, reliability and usefulness (45):** the demonstrated workflow is organiser wallet sign-in, campaign creation, private invitation, contributor signature, claim submission, organiser approval and persistent history. The API tests cover one-time invitations, duplicate-wallet prevention, expiry, immutable decisions and concurrent claims. The MAINNET app does not execute or verify a payout; do not present that missing capability as complete.
+- **Functionality, reliability and usefulness (45):** the demonstrated workflow is organiser wallet sign-in, campaign creation, private invitation, contributor signature, claim submission, organiser approval and persistent history. The API tests cover one-time invitations, duplicate-wallet prevention, expiry, immutable decisions and concurrent claims. The MAINNET app does not initiate or custody a payout. It does independently verify an already-sent transfer by hash and finality; demonstrate this only after the real 10 NIM hash passes.
 - **Nimiq Pay and Nimiq integration (25):** real Nimiq Pay wallet authentication and claim signatures are core to the workflow. Organisers send NIM through Nimiq Pay, and NimClaim independently verifies the exact MAINNET transfer by hash and finality. NimClaim does not broadcast or custody funds.
 - **Real usage (15):** evidence currently documents one organiser and one contributor using two separate Nimiq Pay devices. The organiser reported a separate 10 NIM transfer; its transaction hash still needs to be submitted and verified before claiming an on-chain paid result. This does not establish 25+ unique users.
 - **Design and UX (10):** the responsive desktop and mobile browser suites each passed 20 tests in the latest application run. These browser fixtures use synthetic signatures; the two-device acceptance is separate physical evidence. Show the mobile recipient flow and the correct settlement state: Paid · verified on-chain after a successful hash check, otherwise Approved · unpaid.
@@ -84,7 +84,7 @@ The official scoring guide weights functionality, reliability and usefulness at 
 
 ### Honest scope of unimplemented payment cases
 
-Duplicate claims, used invitations, competing decisions and expired invitations are covered by application tests. Unknown payment outcomes, refunds and fulfilment are not active MAINNET workflows because NimClaim does not initiate or escrow payments. There is no refund path for funds the app never holds. Any external transfer must be checked independently; no hash or screenshot alone should change an in-app claim to paid.
+Duplicate claims, used invitations, competing decisions and expired invitations are covered by application tests. Unknown payment outcomes, refunds and fulfilment are not active MAINNET workflows because NimClaim does not initiate or escrow payments. Already-sent external transfers can be independently verified by transaction hash, exact sender/recipient/amount and macro-block finality. There is no refund path for funds the app never holds; a hash or screenshot alone never changes a claim to paid.
 
 ### Promotion and final evidence checklist
 
