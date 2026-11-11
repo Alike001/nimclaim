@@ -6,6 +6,7 @@ import { createPool, neonConnection } from "./db.js";
 import { verifySchema } from "./schema.js";
 import { verifyRuntimeRole } from "./permissions.js";
 import { PostgresStore } from "./store.js";
+import { HttpRpc } from "../rpc.js";
 import { createPostgresApp } from "./app.js";
 import { stagingGateway, stagingRoute } from "../staging-gateway.js";
 
@@ -39,6 +40,26 @@ export function mainnetConfig(env: NodeJS.ProcessEnv, administrative = false) {
     throw new Error(
       "Unsafe MAINNET claims configuration; spending must remain disabled",
     );
+  let readonlyRpcUrl: string | undefined;
+  if (env.NIMIQ_READONLY_RPC_URL !== undefined) {
+    try {
+      const rpcUrl = new URL(env.NIMIQ_READONLY_RPC_URL);
+      if (
+        rpcUrl.protocol !== "https:" ||
+        rpcUrl.username ||
+        rpcUrl.password ||
+        rpcUrl.hash ||
+        rpcUrl.search ||
+        rpcUrl.pathname !== "/"
+      )
+        throw new Error();
+      readonlyRpcUrl = rpcUrl.origin;
+    } catch {
+      throw new Error(
+        "NIMIQ_READONLY_RPC_URL must be an HTTPS RPC origin without credentials or path",
+      );
+    }
+  }
   let origin: string;
   try {
     const url = new URL(env.APP_ORIGIN ?? "");
@@ -77,7 +98,7 @@ export function mainnetConfig(env: NodeJS.ProcessEnv, administrative = false) {
     throw new Error(
       "Separate pinned MAINNET database and restricted role required",
     );
-  return { origin, runtime };
+  return { origin, runtime, readonlyRpcUrl };
 }
 export function mainnetRoute(method: string, path: string) {
   return (
@@ -85,7 +106,9 @@ export function mainnetRoute(method: string, path: string) {
     (method === "POST" &&
       ["/api/auth/challenge", "/api/auth/verify"].includes(path)) ||
     (method === "POST" &&
-      /^\/api\/campaigns\/[a-f0-9-]{36}\/wallet(?:\/challenge)?$/.test(path))
+      /^\/api\/campaigns\/[a-f0-9-]{36}\/wallet(?:\/challenge)?$/.test(path)) ||
+    (method === "POST" &&
+      /^\/api\/claims\/[a-f0-9-]{36}\/payment\/verify$/.test(path))
   );
 }
 // Local test seam accepts only caller-owned pools; environment startup always verifies TLS.
@@ -93,11 +116,12 @@ export async function startPostgresMainnet(
   pool: Pool,
   origin: string,
   staticDir = "./dist",
+  rpc?: HttpRpc,
 ) {
   await verifyRuntimeRole(pool, true);
   await verifySchema(pool, true, mainnetIdentity);
   const server = createPostgresApp(
-    new PostgresStore(pool, origin, "mainnet"),
+    new PostgresStore(pool, origin, "mainnet", rpc),
     staticDir,
   );
   server.listen(0, "127.0.0.1");
@@ -118,10 +142,11 @@ export async function startPostgresMainnet(
   };
 }
 export async function startMainnetFromEnvironment(env: NodeJS.ProcessEnv) {
-  const { origin, runtime } = mainnetConfig(env);
+  const { origin, runtime, readonlyRpcUrl } = mainnetConfig(env);
   const pool = createPool(runtime);
   try {
-    return await startPostgresMainnet(pool, origin);
+    const rpc = readonlyRpcUrl ? new HttpRpc(readonlyRpcUrl) : undefined;
+    return await startPostgresMainnet(pool, origin, "./dist", rpc);
   } catch (error) {
     await pool.end();
     throw error;
