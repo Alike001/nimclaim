@@ -104,8 +104,11 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
       const cookie = (value: string, age: number) =>
         `${sessionName}=${value}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=${age}; Secure`;
       if (mainnet && path === "/api/auth/challenge" && req.method === "POST") {
-        z.object({}).strict().parse(body);
-        return send(201, await store.organiserAuthChallenge());
+        const { intent } = z
+          .object({ intent: z.enum(["login", "register", "link"]) })
+          .strict()
+          .parse(body);
+        return send(201, await store.organiserAuthChallenge(intent));
       }
       if (mainnet && path === "/api/auth/verify" && req.method === "POST") {
         const proof = z
