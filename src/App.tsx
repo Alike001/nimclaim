@@ -24,17 +24,29 @@ type Config = {
   staging?: boolean;
   claimsOnly?: boolean;
 };
-function reviewLabel(status: string, staging?: boolean) {
-  return staging && status === "payment-ready"
-    ? "Approved for testing"
-    : statusLabel(status);
+function reviewLabel(
+  status: string,
+  staging?: boolean,
+  claimsOnly?: boolean,
+) {
+  if (staging && status === "payment-ready") return "Approved for testing";
+  if (claimsOnly && status === "payment-ready") return "Approved · unpaid";
+  return statusLabel(status);
 }
-function History({ claim, staging }: { claim: Claim; staging?: boolean }) {
+function History({
+  claim,
+  staging,
+  claimsOnly,
+}: {
+  claim: Claim;
+  staging?: boolean;
+  claimsOnly?: boolean;
+}) {
   return (
     <ol className="history">
       {claim.history.map((event, i) => (
         <li key={i}>
-          <strong>{reviewLabel(event.status, staging)}</strong>
+          <strong>{reviewLabel(event.status, staging, claimsOnly)}</strong>
           <time dateTime={new Date(event.at).toISOString()}>
             {date(event.at)}
           </time>
@@ -43,9 +55,19 @@ function History({ claim, staging }: { claim: Claim; staging?: boolean }) {
     </ol>
   );
 }
-function Badge({ status, staging }: { status: string; staging?: boolean }) {
+function Badge({
+  status,
+  staging,
+  claimsOnly,
+}: {
+  status: string;
+  staging?: boolean;
+  claimsOnly?: boolean;
+}) {
   return (
-    <span className={`badge ${status}`}>{reviewLabel(status, staging)}</span>
+    <span className={`badge ${status}`}>
+      {reviewLabel(status, staging, claimsOnly)}
+    </span>
   );
 }
 function Notice({ text }: { text: string }) {
@@ -433,6 +455,7 @@ function Organiser({
       ) : creating ? (
         <CreateCampaign
           staging={staging}
+          claimsOnly={claimsOnly}
           cancel={() => setCreating(false)}
           created={(id) => {
             setCreating(false);
@@ -485,7 +508,9 @@ function Organiser({
                     <small>
                       {staging
                         ? "NIM · illustrative TESTNET amount"
-                        : "NIM / reward"}
+                        : claimsOnly
+                          ? "NIM · unpaid commitment"
+                          : "NIM / reward"}
                     </small>
                   </div>
                   <div className="card-meta">
@@ -505,10 +530,12 @@ function Organiser({
 }
 function CreateCampaign({
   staging,
+  claimsOnly,
   cancel,
   created,
 }: {
   staging?: boolean;
+  claimsOnly?: boolean;
   cancel: () => void;
   created: (id: string) => void;
 }) {
@@ -542,7 +569,9 @@ function CreateCampaign({
       <h2>
         {staging
           ? "Create a TESTNET testing campaign"
-          : "Create a reward campaign"}
+          : claimsOnly
+            ? "Create a reward-claim campaign"
+            : "Create a reward campaign"}
       </h2>
       <p>
         {staging
@@ -577,7 +606,9 @@ function CreateCampaign({
           <label>
             {staging
               ? "Illustrative TESTNET amount (NIM)"
-              : "Reward amount (NIM)"}
+              : claimsOnly
+                ? "Reward commitment (NIM)"
+                : "Reward amount (NIM)"}
             <input
               name="amount"
               type="number"
@@ -589,7 +620,11 @@ function CreateCampaign({
             />
           </label>
           <label>
-            {staging ? "Available testing slots" : "Available rewards"}
+            {staging
+              ? "Available testing slots"
+              : claimsOnly
+                ? "Available claim slots"
+                : "Available rewards"}
             <input
               name="slots"
               type="number"
@@ -608,7 +643,9 @@ function CreateCampaign({
         <p className="muted">
           {staging
             ? "TESTNET testing only. This amount is illustrative and non-redeemable. No NIM is held, owed, reserved, transferred or paid. Approval records an organiser review decision only."
-            : "No funds are held or sent. The amount is a reward commitment for organiser review."}
+            : claimsOnly
+              ? "This is a declared reward commitment only. NimClaim does not hold, send or verify NIM payouts."
+              : "No funds are held or sent. The amount is a reward commitment for organiser review."}
         </p>
         <Notice text={error} />
         <button disabled={busy}>
@@ -705,7 +742,11 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
               {nim(c.amount)} <small>NIM</small>
             </strong>
             <span>
-              {data.staging ? "Illustrative TESTNET amount" : "per contributor"}
+              {data.staging
+                ? "Illustrative TESTNET amount"
+                : data.claimsOnly
+                  ? "per contributor · unpaid commitment"
+                  : "per contributor"}
             </span>
           </div>
           <div>
@@ -811,10 +852,18 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
       ) : (
         data.claims.map((claim) => (
           <section className="panel claim-card" key={claim.id}>
-            <Badge status={claimStatus(claim)} staging={data.staging} />
+            <Badge
+        status={claimStatus(claim)}
+        staging={data.staging}
+        claimsOnly={data.claimsOnly}
+      />
             <h3>Verified recipient</h3>
             <code className="address">{claim.address}</code>
-            <History claim={claim} staging={data.staging} />
+            <History
+              claim={claim}
+              staging={data.staging}
+              claimsOnly={data.claimsOnly}
+            />
             {claim.status === "pending" && (
               <div className="actions">
                 <button
@@ -1018,7 +1067,11 @@ function Recipient({ token, config }: { token: string; config: Config }) {
       <Notice text={error} />
       {data.claim ? (
         <section className="panel">
-          <Badge status={claimStatus(data.claim)} staging={config.staging} />
+          <Badge
+            status={claimStatus(data.claim)}
+            staging={config.staging}
+            claimsOnly={config.claimsOnly}
+          />
           <h2>
             {config.staging && data.claim.status === "payment-ready"
               ? "Approved for testing — no payment will be made"
@@ -1038,7 +1091,11 @@ function Recipient({ token, config }: { token: string; config: Config }) {
           </h2>
           <p>Wallet ownership verified for:</p>
           <code className="address">{data.claim.address}</code>
-          <History claim={data.claim} staging={config.staging} />
+          <History
+            claim={data.claim}
+            staging={config.staging}
+            claimsOnly={config.claimsOnly}
+          />
           {!data.claim.payment && (
             <p>No NIM has been transferred through NimClaim.</p>
           )}
