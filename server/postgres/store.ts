@@ -569,7 +569,8 @@ export class PostgresStore {
       return fail(409, verification.reason);
 
     const receipt = verification.receipt;
-    await transaction(this.pool, async (c) => {
+    try {
+      await transaction(this.pool, async (c) => {
       const current = (
         await c.query(
           `SELECT a.id,a.status,a.address,a.campaign_id,p.amount,w.address AS sender
@@ -624,7 +625,20 @@ export class PostgresStore {
         "INSERT INTO events(claim_id,status,at) VALUES ($1,'paid',$2)",
         [claimId, receipt.verifiedAt],
       );
-    });
+      });
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "23505"
+      )
+        return fail(
+          409,
+          "This transaction hash has already been recorded or this claim is already paid.",
+        );
+      throw error;
+    }
     return this.claimView(
       (await this.read("SELECT * FROM claims WHERE id=$1", [claimId]))[0],
     );
