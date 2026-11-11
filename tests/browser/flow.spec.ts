@@ -6,7 +6,9 @@ import { testSigner } from "../helpers";
 async function login(page: Page) {
   await page.goto("/");
   await page.getByLabel("Workspace password").fill("browser-test-password");
-  await page.getByRole("button", { name: "Sign in to workspace", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Sign in to workspace", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Your campaigns" }),
   ).toBeVisible();
