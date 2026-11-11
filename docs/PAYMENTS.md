@@ -22,10 +22,10 @@ hash. It is not a wallet-send route.
 - If the transaction is missing, mismatched, unsuccessful or not final, the
   API records nothing and the claim remains unpaid.
 
-The current public Nimiq Watch RPC is rate-limited and has no uptime guarantee.
-It is a demo dependency, not a production SLA. Operate a dedicated MAINNET
-node or a trusted RPC provider before treating this as a general production
-service.
+The public Nimiq Watch RPC is rate-limited and has no uptime guarantee. The
+server supports a comma-separated failover list in
+`NIMIQ_READONLY_RPC_URLS`; configure a healthy backup or operate a dedicated
+MAINNET node before treating this as a general production service.
 
 
 The campaign organiser's local wallet **authorises** a reward. The active Nimiq Pay remote HTLC **funds** it. These are different addresses. `payment-ready` remains an approval, and only independently verified, finalized successful execution is paid.
