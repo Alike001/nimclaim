@@ -26,6 +26,8 @@ export interface Receipt {
   amount: number;
   fee: number;
   network: Network;
+  /** Set only when NimClaim verifies a transfer sent separately through Nimiq Pay. */
+  source?: "external";
 }
 export interface PaymentGate {
   enabled: boolean;
