@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { readFile } from "node:fs/promises";
 import { testSigner } from "../helpers";
 test.use({ network: "mainnet" });
 
@@ -197,6 +198,28 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     page.getByText("Approved · unpaid", { exact: true }).first(),
   ).toBeVisible();
   await expect(
+    page.getByRole("heading", { name: "Approved rewards" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("1 reward approved", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Copy settlement details" }),
+  ).toBeVisible();
+  const downloadPromise = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download approved rewards CSV" })
+    .click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^nimclaim-approved-rewards-/);
+  const downloadPath = await download.path();
+  if (!downloadPath) throw new Error("CSV download did not produce a file.");
+  const csv = await readFile(downloadPath, "utf8");
+  expect(csv).toContain(signer.address);
+  expect(csv).toContain("0.12345");
+  expect(csv).toContain("Approved · unpaid");
+  expect(csv).toContain("Not paid by NimClaim");
+  await expect(
     page.getByRole("button", { name: /Review.*payment/i }),
   ).toHaveCount(0);
   await page.goto(url);
@@ -206,6 +229,12 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
   await expect(
     page.getByText("No NIM has been transferred through NimClaim."),
   ).toBeVisible();
+  await expect(page.locator(".claim-next-step")).toContainText(
+    "This records the organiser's decision, not a transfer.",
+  );
+  await expect(page.locator(".claim-next-step")).toContainText(
+    "NimClaim does not hold, send or verify NIM payments.",
+  );
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,

@@ -1233,3 +1233,140 @@ main {
     font-size: 12px;
   }
 }
+
+/* Approved reward handoff and clear contributor settlement status. */
+.approved-rewards-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.approved-rewards-heading h2 {
+  margin: 0;
+}
+.approved-count {
+  flex: 0 0 auto;
+  border: 1px solid #d7e4d8;
+  border-radius: 999px;
+  background: #edf4eb;
+  color: #285b43;
+  padding: 7px 11px;
+  font-size: 12px;
+  font-weight: 750;
+}
+.approved-rewards-list {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+}
+.approved-reward-card {
+  min-width: 0;
+  border: 1px solid #e0e8df;
+  border-radius: 13px;
+  background: #fbfcf9;
+  padding: 18px;
+}
+.approved-reward-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.approved-reward-topline > strong {
+  color: #173d32;
+  font-size: 23px;
+  letter-spacing: -0.03em;
+}
+.approved-reward-topline small {
+  font-size: 12px;
+  letter-spacing: 0;
+}
+.approved-reward-label {
+  margin: 15px 0 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #526b60;
+}
+.approved-reward-address {
+  font-size: 13px;
+  line-height: 1.65;
+  word-break: break-word;
+}
+.approved-reward-reference {
+  margin: 9px 0 14px;
+  color: #63766c;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.approved-reward-reference code {
+  color: #344e43;
+}
+.approved-reward-actions {
+  margin-top: 12px;
+}
+.approved-rewards-footer {
+  border-top: 1px solid #e3eae2;
+  padding-top: 16px;
+  margin-top: 18px;
+}
+.approved-rewards-footer > button {
+  min-height: 46px;
+}
+.approved-rewards-footer .muted {
+  margin-bottom: 0;
+  line-height: 1.6;
+}
+.approved-empty {
+  margin-top: 18px;
+  border: 1px dashed #cbd9cd;
+  border-radius: 11px;
+  background: #fafcf8;
+  padding: 18px;
+}
+.approved-empty strong {
+  color: #254d3e;
+}
+.approved-empty p {
+  margin-bottom: 0;
+  font-size: 13px;
+}
+.claim-next-step {
+  margin: 20px 0;
+  padding: 15px 17px;
+  border-left: 4px solid #b18a36;
+  border-radius: 9px;
+  background: #fff9e9;
+}
+.claim-next-step strong {
+  display: block;
+  color: #5f4a1c;
+  font-size: 14px;
+}
+.claim-next-step p {
+  margin: 7px 0 0;
+  color: #5c5748;
+  font-size: 13px;
+  line-height: 1.7;
+}
+@media (max-width: 600px) {
+  .approved-rewards-heading {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .approved-reward-card {
+    padding: 15px;
+  }
+  .approved-reward-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+  }
+  .approved-reward-actions > button {
+    width: 100%;
+  }
+  .approved-rewards-footer > button {
+    width: 100%;
+  }
+}
