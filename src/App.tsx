@@ -253,12 +253,6 @@ export default function App() {
         </div>
       </header>
       <main>
-        {config?.claimsOnly && (
-          <p className="notice" role="status">
-            MAINNET · Real wallet signatures and reward claims. Payments are
-            unavailable; approval does not transfer NIM.
-          </p>
-        )}
         <Notice text={error} />
         {config &&
           (hash === "#diagnostics" ? (
