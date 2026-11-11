@@ -75,7 +75,17 @@ test("landing makes organiser and contributor paths clear and password visibilit
 });
 async function invitation(page: Page, staging = false) {
   await login(page);
-  await page.getByRole("button", { name: "＋ Create campaign" }).click();
+  const firstCampaignButton = page.getByRole("button", {
+    name: "Create your first campaign",
+    exact: true,
+  });
+  if (await firstCampaignButton.isVisible()) {
+    await firstCampaignButton.click();
+  } else {
+    await page
+      .getByRole("button", { name: "＋ Create campaign", exact: true })
+      .click();
+  }
   await page
     .getByLabel("Title", { exact: true })
     .fill(`Browser test ${Date.now()}`);
