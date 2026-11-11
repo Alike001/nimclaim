@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { api, date, nim, type Claim } from "./api";
 import {
   connectWallet,
@@ -106,7 +106,7 @@ export function ExternalPaymentVerifier({
 
   if (claim.payment) return <PaymentStatus payment={claim.payment} />;
 
-  async function verify(event: React.FormEvent<HTMLFormElement>) {
+  async function verify(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setError("");
@@ -126,7 +126,7 @@ export function ExternalPaymentVerifier({
   }
 
   return (
-    <section className="panel manual-payment-verifier">
+    <div className="manual-payment-verifier">
       <h3>Verify NIM payment</h3>
       <p>
         Send exactly {nim(amount)} NIM from this campaign's authorised organiser
@@ -166,7 +166,7 @@ export function ExternalPaymentVerifier({
       )}
       {error && <p role="alert" className="notice">{error}</p>}
       {notice && <p role="status" aria-live="polite">{notice}</p>}
-    </section>
+    </div>
   );
 }
 export function CampaignWallet({
@@ -219,7 +219,7 @@ export function CampaignWallet({
       </h2>
       {wallet ? (
         <>
-          <p>This campaign is permanently authorized to:</p>
+          <p>This is the authorised campaign wallet and expected sender for verified reward payments:</p>
           <code className="address">{wallet.address}</code>
         </>
       ) : (
@@ -228,7 +228,7 @@ export function CampaignWallet({
             Authorize a signing wallet for this campaign. This is immutable and
             sends no funds.{" "}
             {claimsOnly
-              ? "It records which wallet signed for this campaign."
+              ? "NimClaim accepts a reward payment only from this wallet. Send the exact reward to the contributor in Nimiq Pay, then verify its transaction hash here."
               : "A signing address does not establish the account Nimiq Pay will use for payments."}
           </p>
           <button disabled={busy} onClick={bind}>
