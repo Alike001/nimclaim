@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import { transaction } from "./db.js";
 import { checkPassword, digest, randomToken, verifyOwner } from "../crypto.js";
 import { fail } from "../http-contract.js";
-import { chain } from "../rpc.js";
-import type { Intent, PaymentState, Receipt } from "../../shared/payments.js";
+import { chain, hashSchema, verifyBasicTransfer, EvidenceMismatch, type Rpc } from "../rpc.js";
+import type { Intent, PaymentState, PaymentView, Receipt } from "../../shared/payments.js";
 
 type Row = Record<string, any>;
 export class PostgresStore {
@@ -12,6 +12,7 @@ export class PostgresStore {
     public pool: Pool,
     public origin: string,
     public network: "testnet" | "mainnet" = "testnet",
+    public rpc?: Rpc,
   ) {}
   async walletChallenge(
     campaignId: string,
@@ -504,6 +505,185 @@ export class PostgresStore {
       (await this.read("SELECT * FROM claims WHERE id=$1", [id]))[0],
     );
   }
+
+  async verifyExternalPayment(
+    claimId: string,
+    hashInput: string,
+    organiserId?: string,
+  ) {
+    if (this.network !== "mainnet")
+      fail(404, "External MAINNET payment verification is unavailable here.");
+    if (!organiserId) fail(401, "Organiser session is required.");
+    if (!this.rpc)
+      fail(503, "MAINNET read-only transaction verification is not configured.");
+    const hash = hashSchema.parse(hashInput.toLowerCase());
+    const claim = (
+      await this.read(
+        `SELECT a.id,a.status,a.address,a.campaign_id,p.amount,p.expires,
+                w.address AS sender
+         FROM claims a
+         JOIN campaigns p ON p.id=a.campaign_id
+         LEFT JOIN campaign_wallets w ON w.campaign_id=p.id
+         WHERE a.id=$1 AND p.organiser_id=$2`,
+        [claimId, organiserId],
+      )
+    )[0];
+    if (!claim) fail(404, "Claim not found.");
+    if (claim.status !== "payment-ready")
+      fail(409, "Only an approved claim can receive a verified payment.");
+    if (!claim.sender)
+      fail(409, "Authorize the campaign's organiser wallet before verifying payment.");
+    const existing = (
+      await this.read(
+        "SELECT claim_id,hash FROM manual_payment_receipts WHERE claim_id=$1 OR hash=$2",
+        [claimId, hash],
+      )
+    )[0];
+    if (existing) {
+      if (existing.claim_id === claimId && existing.hash === hash)
+        return this.claimView(
+          (await this.read("SELECT * FROM claims WHERE id=$1", [claimId]))[0],
+        );
+      fail(409, "This transaction hash has already been recorded or this claim is already paid.");
+    }
+
+    let verification;
+    try {
+      verification = await verifyBasicTransfer(
+        this.rpc,
+        {
+          sender: claim.sender,
+          recipient: claim.address,
+          amount: Number(claim.amount),
+          network: "mainnet",
+        },
+        hash,
+        Date.now(),
+      );
+    } catch (error) {
+      if (error instanceof EvidenceMismatch)
+        fail(409, error.message);
+      fail(503, "MAINNET transaction verification is temporarily unavailable. No payment was recorded.");
+    }
+    if (verification.state !== "CONFIRMED" || !verification.receipt)
+      fail(409, verification.reason);
+
+    const receipt = verification.receipt;
+    await transaction(this.pool, async (c) => {
+      const current = (
+        await c.query(
+          `SELECT a.id,a.status,a.address,a.campaign_id,p.amount,w.address AS sender
+           FROM claims a
+           JOIN campaigns p ON p.id=a.campaign_id
+           LEFT JOIN campaign_wallets w ON w.campaign_id=p.id
+           WHERE a.id=$1 AND p.organiser_id=$2
+           FOR UPDATE OF a`,
+          [claimId, organiserId],
+        )
+      ).rows[0];
+      if (!current) fail(404, "Claim not found.");
+      if (
+        current.status !== "payment-ready" ||
+        current.address !== claim.address ||
+        current.campaign_id !== claim.campaign_id ||
+        Number(current.amount) !== Number(claim.amount) ||
+        current.sender !== claim.sender
+      )
+        fail(409, "Claim or campaign payment details changed. Refresh and verify again.");
+      const duplicate = (
+        await c.query(
+          "SELECT claim_id,hash FROM manual_payment_receipts WHERE claim_id=$1 OR hash=$2",
+          [claimId, hash],
+        )
+      ).rows[0];
+      if (duplicate)
+        fail(409, "This transaction hash has already been recorded or this claim is already paid.");
+      await c.query(
+        `INSERT INTO manual_payment_receipts
+          (id,claim_id,campaign_id,hash,sender,recipient,amount,fee,network,
+           validity_start_height,block_number,block_hash,macro_number,macro_hash,verified_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'mainnet',$9,$10,$11,$12,$13,$14)`,
+        [
+          randomUUID(),
+          claimId,
+          claim.campaign_id,
+          receipt.hash,
+          receipt.sender,
+          receipt.recipient,
+          receipt.amount,
+          receipt.fee,
+          Number((await c.query("SELECT validity_start_height FROM (SELECT 0::bigint AS validity_start_height) q")).rows[0].validity_start_height),
+          receipt.blockNumber,
+          receipt.blockHash,
+          receipt.macroNumber,
+          receipt.macroHash,
+          receipt.verifiedAt,
+        ],
+      );
+      await c.query(
+        "INSERT INTO events(claim_id,status,at) VALUES ($1,'paid',$2)",
+        [claimId, receipt.verifiedAt],
+      );
+    });
+    return this.claimView(
+      (await this.read("SELECT * FROM claims WHERE id=$1", [claimId]))[0],
+    );
+  }
+
+  private async manualPaymentView(claimId: string): Promise<PaymentView | null> {
+    const row = (
+      await this.read(
+        `SELECT r.*,p.expires
+         FROM manual_payment_receipts r
+         JOIN campaigns p ON p.id=r.campaign_id
+         WHERE r.claim_id=$1`,
+        [claimId],
+      )
+    )[0];
+    if (!row) return null;
+    const verifiedAt = Number(row.verified_at);
+    const reason =
+      "External Nimiq Pay transfer independently verified and finalized. NimClaim did not broadcast or custody funds.";
+    const receipt: Receipt = {
+      hash: row.hash,
+      blockNumber: Number(row.block_number),
+      blockHash: row.block_hash,
+      macroNumber: Number(row.macro_number),
+      macroHash: row.macro_hash,
+      executionResult: true,
+      verifiedAt,
+      sender: row.sender,
+      recipient: row.recipient,
+      amount: Number(row.amount),
+      fee: Number(row.fee),
+      network: "mainnet",
+      source: "external",
+    };
+    const intent: Intent = {
+      id: row.id,
+      claim_id: row.claim_id,
+      campaign_id: row.campaign_id,
+      sender: row.sender,
+      recipient: row.recipient,
+      amount: Number(row.amount),
+      fee: Number(row.fee),
+      network: "mainnet",
+      validity_start_height: Number(row.validity_start_height),
+      created: verifiedAt,
+      expires: Number(row.expires),
+    };
+    return {
+      intent,
+      id: row.id,
+      state: "CONFIRMED",
+      reason,
+      candidateHash: row.hash,
+      receipt,
+      explorerUrl: `${chain.mainnet.explorer}/#${row.hash}`,
+      history: [{ state: "CONFIRMED", reason, at: verifiedAt }],
+    };
+  }
+
   async claimView(claim: Row | undefined) {
     if (!claim) return null;
     return {
@@ -512,7 +692,9 @@ export class PostgresStore {
       status: claim.status,
       created: claim.created,
       payment:
-        this.network === "mainnet" ? null : await this.paymentView(claim.id),
+        this.network === "mainnet"
+          ? await this.manualPaymentView(claim.id)
+          : await this.paymentView(claim.id),
       history: await this.read(
         "SELECT status,at FROM events WHERE claim_id=$1 ORDER BY id",
         [claim.id],
