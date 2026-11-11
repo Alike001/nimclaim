@@ -1,12 +1,7 @@
 -- Multi-organiser MAINNET migration. Existing records are assigned to one
 -- explicit legacy tenant; no campaign, invitation, claim or event is deleted.
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.organiser WHERE id=1) THEN
-    RAISE EXCEPTION 'Legacy organiser bootstrap is required before tenant migration';
-  END IF;
-END $$;
-
+-- The legacy organiser credential may be bootstrapped immediately after
+-- migrations on a fresh installation; the tenant row is created independently.
 CREATE TABLE organisers (
   id uuid PRIMARY KEY,
   wallet_address text UNIQUE,
