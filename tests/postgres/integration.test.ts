@@ -1740,8 +1740,57 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
     (await organiser.call("/api/login", { password })).status,
     404,
   );
+  const unknownClient = client(api.port, appOrigin);
+  const unknownSigner = testSigner();
+  const unknownChallenge = await unknownClient.call("/api/auth/challenge", {
+    intent: "login",
+  });
+  assert.equal(unknownChallenge.status, 201);
+  assert.equal(
+    (
+      await unknownClient.call("/api/auth/verify", {
+        challengeId: unknownChallenge.body.id,
+        publicKey: unknownSigner.publicKey,
+        signature: unknownSigner.sign(unknownChallenge.body.message),
+      })
+    ).status,
+    404,
+  );
+
   const owner = testSigner();
   const login = await organiser.walletLogin(owner, "link", password);
+  const duplicateRegistration = client(api.port, appOrigin);
+  const duplicateChallenge = await duplicateRegistration.call(
+    "/api/auth/challenge",
+    { intent: "register" },
+  );
+  assert.equal(
+    (
+      await duplicateRegistration.call("/api/auth/verify", {
+        challengeId: duplicateChallenge.body.id,
+        publicKey: owner.publicKey,
+        signature: owner.sign(duplicateChallenge.body.message),
+      })
+    ).status,
+    409,
+  );
+  const secondLegacyLink = client(api.port, appOrigin);
+  const secondLegacyChallenge = await secondLegacyLink.call(
+    "/api/auth/challenge",
+    { intent: "link" },
+  );
+  const secondLegacyWallet = testSigner();
+  assert.equal(
+    (
+      await secondLegacyLink.call("/api/auth/verify", {
+        challengeId: secondLegacyChallenge.body.id,
+        publicKey: secondLegacyWallet.publicKey,
+        signature: secondLegacyWallet.sign(secondLegacyChallenge.body.message),
+        legacyPassword: password,
+      })
+    ).status,
+    409,
+  );
   assert.match(
     login.headers["set-cookie"]![0],
     /^nimclaim_mainnet_session=.*; Secure$/,
