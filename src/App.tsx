@@ -102,12 +102,12 @@ function Landing({
       <div className="landing-hero">
         <div className="landing-copy">
           <p className="eyebrow landing-kicker">
-            Verified contribution claims for Nimiq communities
+            Wallet-signed reward claims for Nimiq communities
           </p>
           <h1>
             Recognise the work.
             <br />
-            <span>Verify the claim.</span>
+            <span>Verify the wallet.</span>
           </h1>
           <p className="landing-lede">
             Create a campaign, invite contributors privately, and review real
