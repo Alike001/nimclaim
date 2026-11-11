@@ -608,9 +608,11 @@ function Organiser({
             <p>
               {campaigns.length} campaign{campaigns.length === 1 ? "" : "s"}
             </p>
-            <button onClick={() => setCreating(true)}>
-              ＋ Create campaign
-            </button>
+            {campaigns.length > 0 && (
+              <button onClick={() => setCreating(true)}>
+                ＋ Create campaign
+              </button>
+            )}
           </div>
           {campaigns.length === 0 ? (
             <section className="panel empty">
