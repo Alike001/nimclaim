@@ -111,8 +111,9 @@ function Landing({
             </a>
           </div>
           <p className="landing-hint">
-            <strong>Contributor?</strong> You don't need an account or organiser
-            password. Open the complete invitation link inside Nimiq Pay.
+            <strong>Contributor?</strong> In Nimiq Pay, open Mini Apps → Custom
+            URL and paste your complete invitation link. No account or organiser
+            password is needed.
           </p>
         </div>
         <aside className="landing-preview" aria-label="Reward claim workflow">
@@ -414,8 +415,9 @@ function Organiser({
               : "This deployment has one private organiser account. Only its owner can create campaigns or review claims. Contributors use their invitation links and never need this password."}
           </p>
           <p className="auth-contributor-note">
-            <strong>Here to claim a reward?</strong> Open the complete invitation
-            link inside Nimiq Pay. You do not need to sign in here.
+            <strong>Here to claim a reward?</strong> In Nimiq Pay, open Mini Apps
+            → Custom URL and paste the complete invitation link. You do not need
+            to sign in here.
           </p>
         </section>
       </>
@@ -576,7 +578,9 @@ function CreateCampaign({
       <p>
         {staging
           ? "Each invitation uses one claim-testing slot. Campaign details are fixed once created."
-          : "Each invitation reserves one reward slot. Campaign details are fixed once created."}
+          : claimsOnly
+            ? "Each invitation uses one claim slot. The declared reward amount is an unpaid commitment only; no NIM is held or sent."
+            : "Each invitation reserves one reward slot. Campaign details are fixed once created."}
       </p>
       <form onSubmit={submit}>
         <label>
@@ -730,9 +734,13 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
             ? expired
               ? "Expired TESTNET testing campaign"
               : "TESTNET testing campaign"
-            : expired
-              ? "Expired campaign"
-              : "Reward campaign"}
+            : data.claimsOnly
+              ? expired
+                ? "Expired MAINNET claims campaign"
+                : "MAINNET claims campaign"
+              : expired
+                ? "Expired campaign"
+                : "Reward campaign"}
         </p>
         <h2>{c.title}</h2>
         <p className="description">{c.description}</p>
@@ -776,7 +784,9 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
         <p>
           {data.staging
             ? "Invitations are for claim-workflow testing only. One link uses one testing slot. Share it directly with the intended tester. No payment will be made."
-            : "One link, one reward slot. Anyone with the link can request the reward. Share it directly with the intended recipient."}
+            : data.claimsOnly
+              ? "One link, one claim slot. Anyone with the link can submit a claim, so share it only with the intended recipient. NimClaim does not send NIM."
+              : "One link, one reward slot. Anyone with the link can request the reward. Share it directly with the intended recipient."}
         </p>
         <button
           disabled={
@@ -1146,7 +1156,13 @@ function Recipient({ token, config }: { token: string; config: Config }) {
           {challenge && (
             <>
               <p>
-                {config.staging ? (
+                {config.claimsOnly ? (
+                  <>
+                    This signature verifies wallet ownership and submits your
+                    claim for organiser review on MAINNET. It does not request
+                    or authorise a NIM transfer.
+                  </>
+                ) : config.staging ? (
                   <>
                     This signature verifies wallet ownership for claim-workflow
                     testing on {config.network}. It does not request or
