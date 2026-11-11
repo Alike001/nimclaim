@@ -83,6 +83,14 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
   await page
     .getByRole("button", { name: "Connect Nimiq Pay", exact: true })
     .click();
+  await expect(
+    page.getByText(
+      /This signature verifies wallet ownership and submits your claim for organiser review on MAINNET/,
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/does not request or authorise a NIM transfer/),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Sign & submit claim" }).click();
   await expect(
     page.getByRole("heading", { name: "Your request is with the organiser." }),
