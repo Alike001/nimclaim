@@ -189,6 +189,18 @@ export class PostgresStore {
       )
         fail(409, "Wallet sign-in request belongs to another site or network.");
       const intent = binding.intent as "login" | "register" | "link";
+      const expectedPurpose = {
+        login: "Sign in to your existing NimClaim organiser workspace",
+        register: "Create a new NimClaim organiser workspace",
+        link: "Link your previous NimClaim organiser workspace",
+      }[intent];
+      if (
+        binding.purpose !==
+          `${expectedPurpose}. This is a signature only; no transaction or payment.` ||
+        typeof binding.nonce !== "string" ||
+        !/^[a-f0-9]{64}$/.test(binding.nonce)
+      )
+        fail(409, "Wallet sign-in request purpose or nonce is invalid.");
       const publicKey = input.publicKey.toLowerCase();
       const address = verifyOwner(challenge.message, publicKey, input.signature);
       if (!address) fail(401, "Nimiq Pay signature could not be verified.");
