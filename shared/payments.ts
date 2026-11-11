@@ -16,6 +16,7 @@ export interface Intent {
 export interface Receipt {
   hash: string;
   blockNumber: number;
+  validityStartHeight: number;
   blockHash: string;
   macroNumber: number;
   macroHash: string;
