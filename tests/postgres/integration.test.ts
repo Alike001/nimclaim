@@ -1629,7 +1629,6 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
     403,
   );
   const binding = (await organiser.call(challengePath, {})).body;
-  const owner = testSigner();
   assert.equal(JSON.parse(binding.message).network, "mainnet");
   const walletProof = {
     challengeId: binding.id,
@@ -1693,6 +1692,14 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
   assert.equal(result.status, 201);
   assert.equal((await publicClient.call("/api/claim", fresh.body)).status, 409);
   const claimId = result.body.claim.id;
+  assert.equal(
+    (
+      await otherSession.call(`/api/claims/${claimId}/decision`, {
+        decision: "payment-ready",
+      })
+    ).status,
+    404,
+  );
   assert.equal(
     (
       await organiser.call(`/api/claims/${claimId}/decision`, {
