@@ -23,7 +23,7 @@ const env = {
 };
 test("MAINNET configuration pins independent TLS database, role, origin and spending block", () => {
   assert.equal(mainnetConfig(env).runtime.database, "nimclaim_mainnet");
-  assert.equal(
+  assert.deepEqual(
     mainnetConfig({ ...env, NIMIQ_READONLY_RPC_URLS: "https://rpc.nimiqwatch.com" }).readonlyRpcUrls,
     ["https://rpc.nimiqwatch.com"],
   );
