@@ -74,6 +74,17 @@ function Notice({ text }: { text: string }) {
   ) : null;
 }
 
+function compactWalletAddress(address: string) {
+  const groups = address.trim().split(/\s+/);
+  if (groups.length >= 4) {
+    return groups.slice(0, 2).join(" ") + " … " + groups.slice(-2).join(" ");
+  }
+  if (address.length > 20) {
+    return address.slice(0, 10) + "…" + address.slice(-8);
+  }
+  return address;
+}
+
 function Landing({
   network,
   claimsOnly,
@@ -295,7 +306,7 @@ export default function App() {
         {config?.staging ? (
           "TESTNET claim testing only. Native NIM spending is disabled."
         ) : config?.claimsOnly ? (
-          "MAINNET claims only. NimClaim does not send or verify payments."
+          "MAINNET claims only. NimClaim records signed claims and organiser decisions; it does not send or verify NIM payments."
         ) : (
           <>
             Native NIM rewards.{" "}
@@ -405,15 +416,14 @@ function Organiser({
             aria-labelledby="organiser-access-title"
           >
             <p className="eyebrow">Public organiser access</p>
-            <h1 id="organiser-access-title">Create or access your workspace</h1>
+            <h1 id="organiser-access-title">Create or open your workspace</h1>
             <p>
-              Use Nimiq Pay to create a new organiser account or return to your
-              existing workspace. Your wallet signs a one-time login message;
-              NimClaim never receives your PIN, recovery phrase or private key.
+              Use Nimiq Pay to create a workspace or return to one you already
+              use. NimClaim confirms wallet ownership with a sign-in message.
+              Your PIN, recovery phrase and private key stay in your wallet.
             </p>
-            <p className="auth-help">
-              Open this page inside Nimiq Pay via Mini Apps → Custom URL before
-              signing in or creating a workspace.
+            <p className="auth-help auth-instruction">
+              Open this page in Nimiq Pay → Mini Apps → Custom URL to continue.
             </p>
             <button
               className="wallet-login"
@@ -431,28 +441,23 @@ function Organiser({
             >
               {busy ? "Waiting for Nimiq Pay…" : "Create a new workspace"}
             </button>
-            <p className="auth-help">
-              Choose sign in if you already have a NimClaim workspace. New
-              organisers should create one. Each wallet gets its own private
-              campaigns and claim reviews.
+            <p className="auth-choice-note">
+              Each Nimiq Pay wallet has its own private campaigns and claim
+              reviews.
             </p>
-            <p className="auth-help">
-              Your Nimiq wallet controls access to this workspace. NimClaim
-              cannot recover it if you lose access to that wallet; keep your
-              wallet backup safe.
+            <p className="auth-security-note">
+              Keep your wallet backup safe. NimClaim cannot restore access if
+              you lose control of your wallet.
             </p>
             <details className="auth-legacy-link">
-              <summary>
-                Already used NimClaim? Link your previous workspace
-              </summary>
+              <summary>Have campaigns in an older NimClaim workspace?</summary>
               <p>
-                If you created campaigns on the original single-organiser
-                version, enter its one-time workspace password here. Your old
-                campaigns and claims will stay with that workspace. You only
-                need this password once.
+                If your campaigns are still in the earlier password-based
+                workspace, you can link them to this wallet once. Enter the old
+                NimClaim workspace password below.
               </p>
               <label htmlFor="legacy-workspace-password">
-                Previous workspace password
+                Old NimClaim workspace password
               </label>
               <input
                 id="legacy-workspace-password"
@@ -463,8 +468,8 @@ function Organiser({
                 onChange={(event) => setLegacyPassword(event.target.value)}
               />
               <p className="auth-help">
-                This password is used once to attach your previous campaigns to
-                this wallet. Never enter your Nimiq Pay PIN or recovery phrase.
+                Use your old NimClaim password only. Never enter your Nimiq Pay
+                PIN or recovery phrase.
               </p>
               <button
                 className="wallet-login"
@@ -472,18 +477,14 @@ function Organiser({
                 onClick={() => walletLogin("link")}
                 disabled={busy || !legacyPassword}
               >
-                {busy ? "Waiting for Nimiq Pay…" : "Link previous workspace"}
+                {busy ? "Waiting for Nimiq Pay…" : "Link older workspace"}
               </button>
             </details>
             <Notice text={error} />
-            <p className="muted auth-access-note">
-              Each organiser wallet has its own private campaigns and claim
-              reviews. Contributors do not need an account.
-            </p>
             <p className="auth-contributor-note">
-              <strong>Here to claim a reward?</strong> Open Nimiq Pay → Mini
-              Apps → Custom URL and paste your complete invitation link. You do
-              not need to sign in here.
+              <strong>Claiming a reward?</strong> Open the complete invitation
+              link in Nimiq Pay → Mini Apps → Custom URL. You do not need to
+              create an organiser workspace.
             </p>
           </section>
         ) : (
@@ -554,9 +555,15 @@ function Organiser({
           <p className="eyebrow">Organiser workspace</p>
           <h1>Your campaigns</h1>
           {claimsOnly && walletAddress && (
-            <p className="muted">
-              Signed in with Nimiq Pay · <code>{walletAddress}</code>
-            </p>
+            <div className="wallet-identity">
+              <span>Signed in with Nimiq Pay</span>
+              <code
+                title={walletAddress}
+                aria-label={`Wallet address ${walletAddress}`}
+              >
+                {compactWalletAddress(walletAddress)}
+              </code>
+            </div>
           )}
         </div>
         <button
@@ -613,11 +620,11 @@ function Organiser({
               <h2>
                 {staging
                   ? "Test the claim workflow."
-                  : "A reward for a contribution."}
+                  : "Start your first campaign."}
               </h2>
               <p>
-                Create your first campaign, then share a unique invitation with
-                each contributor.
+                Create a campaign, then send each contributor their own
+                private invitation link.
               </p>
               <button onClick={() => setCreating(true)}>
                 Create your first campaign

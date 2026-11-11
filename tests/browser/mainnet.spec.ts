@@ -113,6 +113,12 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
   await page.goto("/");
   await expect(page.locator("header .network")).toHaveText("MAINNET");
   await expect(
+    page.getByRole("heading", { name: "Create or open your workspace" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/NimClaim confirms wallet ownership with a sign-in message/),
+  ).toBeVisible();
+  await expect(
     page.getByText(
       "MAINNET supports signed claims and organiser review only. NimClaim does not send, track or verify NIM payouts.",
       { exact: true },
@@ -122,6 +128,14 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     .getByRole("button", { name: "Create a new workspace", exact: true })
     .click();
   await expect(page.locator("header .header-access")).toHaveText("Workspace");
+  await expect(page.locator(".wallet-identity")).toContainText(
+    "Signed in with Nimiq Pay",
+  );
+  await expect(page.locator(".wallet-identity code")).toContainText(" … ");
+  await expect(page.locator(".wallet-identity code")).toHaveAttribute(
+    "title",
+    signer.address,
+  );
   await page.locator("header .header-access").click();
   await expect(page.locator("#organiser-access")).toBeVisible();
   await page.getByRole("button", { name: "＋ Create campaign" }).click();
