@@ -571,60 +571,61 @@ export class PostgresStore {
     const receipt = verification.receipt;
     try {
       await transaction(this.pool, async (c) => {
-      const current = (
-        await c.query(
-          `SELECT a.id,a.status,a.address,a.campaign_id,p.amount,w.address AS sender
-           FROM claims a
-           JOIN campaigns p ON p.id=a.campaign_id
-           LEFT JOIN campaign_wallets w ON w.campaign_id=p.id
-           WHERE a.id=$1 AND p.organiser_id=$2
-           FOR UPDATE OF a`,
-          [claimId, organiserId],
+        const current = (
+          await c.query(
+            `SELECT a.id,a.status,a.address,a.campaign_id,p.amount,w.address AS sender
+             FROM claims a
+             JOIN campaigns p ON p.id=a.campaign_id
+             LEFT JOIN campaign_wallets w ON w.campaign_id=p.id
+             WHERE a.id=$1 AND p.organiser_id=$2
+             FOR UPDATE OF a`,
+            [claimId, organiserId],
+          )
+        ).rows[0];
+        if (!current) fail(404, "Claim not found.");
+        if (
+          current.status !== "payment-ready" ||
+          current.address !== claim.address ||
+          current.campaign_id !== claim.campaign_id ||
+          Number(current.amount) !== Number(claim.amount) ||
+          current.sender !== claim.sender
         )
-      ).rows[0];
-      if (!current) fail(404, "Claim not found.");
-      if (
-        current.status !== "payment-ready" ||
-        current.address !== claim.address ||
-        current.campaign_id !== claim.campaign_id ||
-        Number(current.amount) !== Number(claim.amount) ||
-        current.sender !== claim.sender
-      )
-        fail(409, "Claim or campaign payment details changed. Refresh and verify again.");
-      const duplicate = (
+          fail(409, "Claim or campaign payment details changed. Refresh and verify again.");
+        const duplicate = (
+          await c.query(
+            "SELECT claim_id,hash FROM manual_payment_receipts WHERE claim_id=$1 OR hash=$2",
+            [claimId, hash],
+          )
+        ).rows[0];
+        if (duplicate)
+          fail(409, "This transaction hash has already been recorded or this claim is already paid.");
         await c.query(
-          "SELECT claim_id,hash FROM manual_payment_receipts WHERE claim_id=$1 OR hash=$2",
-          [claimId, hash],
-        )
-      ).rows[0];
-      if (duplicate)
-        fail(409, "This transaction hash has already been recorded or this claim is already paid.");
-      await c.query(
-        `INSERT INTO manual_payment_receipts
-          (id,claim_id,campaign_id,hash,sender,recipient,amount,fee,network,
-           validity_start_height,block_number,block_hash,macro_number,macro_hash,verified_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'mainnet',$9,$10,$11,$12,$13,$14)`,
-        [
-          randomUUID(),
-          claimId,
-          claim.campaign_id,
-          receipt.hash,
-          receipt.sender,
-          receipt.recipient,
-          receipt.amount,
-          receipt.fee,
-          receipt.validityStartHeight,
-          receipt.blockNumber,
-          receipt.blockHash,
-          receipt.macroNumber,
-          receipt.macroHash,
-          receipt.verifiedAt,
-        ],
-      );
-      await c.query(
-        "INSERT INTO events(claim_id,status,at) VALUES ($1,'paid',$2)",
-        [claimId, receipt.verifiedAt],
-      );
+          `INSERT INTO manual_payment_receipts
+            (id,claim_id,campaign_id,hash,sender,recipient,amount,fee,network,
+             validity_start_height,block_number,block_hash,macro_number,macro_hash,verified_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'mainnet',$9,$10,$11,$12,$13,$14)`,
+          [
+            randomUUID(),
+            claimId,
+            claim.campaign_id,
+            receipt.hash,
+            receipt.sender,
+            receipt.recipient,
+            receipt.amount,
+            receipt.fee,
+            receipt.validityStartHeight,
+            receipt.blockNumber,
+            receipt.blockHash,
+            receipt.macroNumber,
+            receipt.macroHash,
+            receipt.verifiedAt,
+          ],
+        );
+        await c.query(
+          "INSERT INTO events(claim_id,status,at) VALUES ($1,'paid',$2)",
+          [claimId, receipt.verifiedAt],
+        );
+
       });
     } catch (error) {
       if (
