@@ -1,6 +1,6 @@
 # NimClaim
 
-**Signed claims. Clear reward decisions.**
+**Signed claims. Verified NIM rewards.**
 
 A Nimiq Pay Mini App for community organisers to invite contributors, verify wallet ownership, review reward claims and prepare approved rewards for payment. Built as an independent first vertical slice for the Nimiq Mini Apps Competition Cycle III, Pay category.
 
