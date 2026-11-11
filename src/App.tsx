@@ -880,8 +880,7 @@ function ApprovedRewards({
           <h2 id="approved-rewards-title">Approved rewards</h2>
         </div>
         <span className="approved-count">
-          {approved.length}{" "}
-          {approved.length === 1 ? "reward approved" : "rewards approved"}
+          {approved.length} approved · {paidCount} paid · {unpaidCount} unpaid
         </span>
       </div>
       <p>
