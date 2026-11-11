@@ -90,5 +90,21 @@ export async function verifySchema(
       if (!row || !/^[a-f0-9]{64}:[a-f0-9]{128}$/.test(row.password_hash))
         throw new Error("Staging organiser missing or invalid");
     }
+    if (identity.network === "mainnet") {
+      const legacy = (
+        await c.query(
+          "SELECT id FROM public.organisers WHERE legacy=true",
+        )
+      ).rows;
+      if (legacy.length !== 1)
+        throw new Error("MAINNET legacy workspace migration is incomplete");
+      const orphaned = (
+        await c.query(
+          "SELECT count(*) AS n FROM public.campaigns p LEFT JOIN public.organisers o ON o.id=p.organiser_id WHERE o.id IS NULL",
+        )
+      ).rows[0].n;
+      if (Number(orphaned) !== 0)
+        throw new Error("MAINNET campaign ownership is incomplete");
+    }
   });
 }
