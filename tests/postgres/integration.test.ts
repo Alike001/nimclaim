@@ -209,6 +209,20 @@ function client(apiPort: number, appOrigin = origin) {
       cookie = r.headers["set-cookie"]![0].split(";")[0];
       return r;
     },
+    async walletLogin(signer = testSigner(), legacyPassword?: string) {
+      const challenge = await call("/api/auth/challenge", {});
+      assert.equal(challenge.status, 201);
+      const proof = {
+        challengeId: challenge.body.id,
+        publicKey: signer.publicKey,
+        signature: signer.sign(challenge.body.message),
+        ...(legacyPassword === undefined ? {} : { legacyPassword }),
+      };
+      const r = await call("/api/auth/verify", proof);
+      assert.equal(r.status, 200);
+      cookie = r.headers["set-cookie"]![0].split(";")[0];
+      return { ...r, signer };
+    },
   };
 }
 async function campaign(
@@ -1590,11 +1604,17 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
   assert.equal(config.network, "mainnet");
   assert.equal(config.staging, false);
   assert.equal(config.claimsOnly, true);
-  const login = await organiser.login();
+  assert.equal(
+    (await organiser.call("/api/login", { password })).status,
+    404,
+  );
+  const owner = testSigner();
+  const login = await organiser.walletLogin(owner, password);
   assert.match(
     login.headers["set-cookie"]![0],
     /^nimclaim_mainnet_session=.*; Secure$/,
   );
+  assert.equal(login.body.organiser.walletAddress, owner.address);
   const c = await campaign(organiser, 2);
   const challengePath = `/api/campaigns/${c.id}/wallet/challenge`;
   assert.equal((await publicClient.call(challengePath, {})).status, 401);
@@ -1617,11 +1637,29 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
     signature: owner.sign(binding.message),
   };
   const otherSession = client(api.port, appOrigin);
-  await otherSession.login();
+  const otherOwner = testSigner();
+  await otherSession.walletLogin(otherOwner);
+  assert.deepEqual(
+    (await otherSession.call("/api/campaigns")).body.campaigns,
+    [],
+  );
+  assert.equal(
+    (await otherSession.call(`/api/campaigns/${c.id}`)).status,
+    404,
+  );
+  assert.equal(
+    (
+      await otherSession.call(
+        `/api/campaigns/${c.id}/invitations`,
+        {},
+      )
+    ).status,
+    404,
+  );
   assert.equal(
     (await otherSession.call(`/api/campaigns/${c.id}/wallet`, walletProof))
       .status,
-    409,
+    404,
   );
   assert.equal(
     (
@@ -1673,7 +1711,7 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
   );
   for (const port of [api.port, api.backend]) {
     const caller = client(port, appOrigin);
-    await caller.login();
+    await caller.walletLogin(testSigner());
     const attempt = await caller.call(
       `/api/claims/${claimId}/payment/reserve`,
       {},
@@ -1700,7 +1738,7 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
     ).body.authenticated,
     true,
   );
-  await existing.login();
+  await existing.walletLogin(owner);
   const detail = (await existing.call(`/api/campaigns/${c.id}`)).body;
   assert.equal(detail.wallet.address, owner.address);
   assert.equal(detail.claims[0].status, "payment-ready");
@@ -1744,12 +1782,15 @@ test("MAINNET startup refuses TESTNET identities and staging refuses MAINNET; or
     "https://nimclaim-mainnet.onrender.com",
     "mainnet",
   );
-  const id = randomBytes(16).toString("hex");
+  const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const legacyOrganiserId = (
+    await pool.query("SELECT id FROM organisers WHERE legacy=true")
+  ).rows[0].id;
   await pool.query(
-    "INSERT INTO campaigns VALUES ($1,'Synthetic','Test',1,1,$2,$3)",
-    [id, Date.now() + 3600000, Date.now()],
+    "INSERT INTO campaigns (id,title,description,amount,slots,expires,created,organiser_id) VALUES ($1,'Synthetic','Test',1,1,$2,$3,$4)",
+    [id, Date.now() + 3600000, Date.now(), legacyOrganiserId],
   );
-  const token = new URL((await store.issue(id)).url).hash.slice(7);
+  const token = new URL((await store.issue(id, legacyOrganiserId)).url).hash.slice(7);
   const signer = testSigner();
   const challenge = await store.challenge(token);
   const input = {
