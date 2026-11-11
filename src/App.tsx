@@ -100,7 +100,8 @@ function Landing({
           </p>
           <div className="landing-actions">
             <a className="landing-primary" href="#organiser-access">
-              Organiser sign in <span aria-hidden="true">↗</span>
+              {claimsOnly ? "Create or access workspace" : "Organiser sign in"}{" "}
+              <span aria-hidden="true">↗</span>
             </a>
             <a className="landing-secondary" href="#workflow">
               How it works
@@ -331,13 +332,18 @@ function Organiser({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [legacyPassword, setLegacyPassword] = useState("");
   const load = useCallback(async () => {
     const r = await api("/campaigns");
     setCampaigns(r.campaigns);
   }, []);
   useEffect(() => {
     api("/session")
-      .then((r) => setAuthenticated(r.authenticated))
+      .then((r) => {
+        setAuthenticated(r.authenticated);
+        setWalletAddress(r.walletAddress ?? null);
+      })
       .catch((e) => setError(e.message));
   }, []);
   useEffect(() => {
@@ -350,9 +356,44 @@ function Organiser({
     setError("");
     try {
       await api("/login", { password });
+      setWalletAddress(null);
       setAuthenticated(true);
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function walletLogin() {
+    setBusy(true);
+    setError("");
+    try {
+      const connected = await connectWallet(network);
+      const challenge = await api<{
+        id: string;
+        message: string;
+        expires: number;
+      }>("/auth/challenge", {});
+      const signed = await signChallenge(
+        connected.provider,
+        challenge.message,
+        network,
+        connected.walletAddress,
+      );
+      const result = await api<{
+        authenticated: boolean;
+        organiser: { walletAddress: string; created: number };
+      }>("/auth/verify", {
+        challengeId: challenge.id,
+        publicKey: signed.publicKey,
+        signature: signed.signature,
+        ...(legacyPassword ? { legacyPassword } : {}),
+      });
+      setWalletAddress(result.organiser.walletAddress);
+      setLegacyPassword("");
+      setAuthenticated(result.authenticated);
+    } catch (e) {
+      setError(walletError(e));
     } finally {
       setBusy(false);
     }
@@ -363,63 +404,120 @@ function Organiser({
     return (
       <>
         {showLanding && <Landing network={network} claimsOnly={claimsOnly} />}
-        <section
-          className="panel auth"
-          id="organiser-access"
-          aria-labelledby="organiser-access-title"
-        >
-          <p className="eyebrow">Private organiser access</p>
-          <h1 id="organiser-access-title">
-            {staging ? "Sign in to TESTNET" : "Sign in to manage campaigns"}
-          </h1>
-          <p>
-            {staging
-              ? "Create private invitations and review signed test claims. No payment will be made."
-              : "Manage campaigns, create private invitations and review signed wallet claims. No payment is sent from this workspace."}
-          </p>
-          <form onSubmit={login} aria-busy={busy}>
-            <label htmlFor="organiser-password">Workspace password</label>
-            <div className="password-field">
-              <input
-                id="organiser-password"
-                name="password"
-                type={showPassword ? "text" : "password"}
-                autoComplete="current-password"
-                aria-describedby="organiser-password-help"
-                required
-                maxLength={256}
-              />
-              <button
-                className="password-toggle"
-                type="button"
-                aria-controls="organiser-password"
-                aria-pressed={showPassword}
-                onClick={() => setShowPassword((visible) => !visible)}
-              >
-                {showPassword ? "Hide" : "Show"}
-              </button>
-            </div>
-            <p className="auth-help" id="organiser-password-help">
-              {staging
-                ? "Use the separate TESTNET organiser password. This is not your Nimiq Pay PIN or recovery phrase."
-                : "Use the private NimClaim organiser password created during mainnet setup. It is not your Nimiq Pay PIN, wallet password or recovery phrase."}
+        {claimsOnly ? (
+          <section
+            className="panel auth"
+            id="organiser-access"
+            aria-labelledby="organiser-access-title"
+          >
+            <p className="eyebrow">Public organiser access</p>
+            <h1 id="organiser-access-title">Create or access your workspace</h1>
+            <p>
+              Use Nimiq Pay to create a new organiser account or return to your
+              existing workspace. Your wallet signs a one-time login message;
+              NimClaim never receives your PIN, recovery phrase or private key.
             </p>
-            <button type="submit" disabled={busy}>
-              {busy ? "Signing in…" : "Sign in to workspace"}
+            <button
+              className="wallet-login"
+              type="button"
+              onClick={walletLogin}
+              disabled={busy}
+            >
+              {busy ? "Waiting for Nimiq Pay…" : "Continue with Nimiq Pay"}
             </button>
-          </form>
-          <Notice text={error} />
-          <p className="muted auth-access-note">
-            {staging
-              ? "This is a separate TESTNET organiser account. Contributors use their invitation links and never need this password."
-              : "This deployment has one private organiser account. Only its owner can create campaigns or review claims. Contributors use their invitation links and never need this password."}
-          </p>
-          <p className="auth-contributor-note">
-            <strong>Here to claim a reward?</strong> In Nimiq Pay, open Mini
-            Apps → Custom URL and paste the complete invitation link. You do not
-            need to sign in here.
-          </p>
-        </section>
+            <p className="auth-help">
+              New wallet? Your private workspace is created automatically.
+              Returning wallet? Your campaigns will be waiting for you.
+            </p>
+            <details className="auth-legacy-link">
+              <summary>Already used NimClaim? Link your previous workspace</summary>
+              <p>
+                If you created campaigns on the original single-organiser
+                version, enter its one-time workspace password here. Your old
+                campaigns and claims will stay with that workspace. You only
+                need this password once.
+              </p>
+              <label htmlFor="legacy-workspace-password">
+                Previous workspace password
+              </label>
+              <input
+                id="legacy-workspace-password"
+                type="password"
+                autoComplete="current-password"
+                maxLength={256}
+                value={legacyPassword}
+                onChange={(event) => setLegacyPassword(event.target.value)}
+              />
+              <p className="auth-help">
+                Leave this empty to create a new workspace. Never enter your
+                Nimiq Pay PIN or recovery phrase.
+              </p>
+            </details>
+            <Notice text={error} />
+            <p className="muted auth-access-note">
+              Each organiser wallet has its own private campaigns and claim
+              reviews. Contributors do not need an account.
+            </p>
+            <p className="auth-contributor-note">
+              <strong>Here to claim a reward?</strong> Open Nimiq Pay → Mini
+              Apps → Custom URL and paste your complete invitation link. You do
+              not need to sign in here.
+            </p>
+          </section>
+        ) : (
+          <section
+            className="panel auth"
+            id="organiser-access"
+            aria-labelledby="organiser-access-title"
+          >
+            <p className="eyebrow">Private organiser access</p>
+            <h1 id="organiser-access-title">Sign in to TESTNET</h1>
+            <p>
+              Create private invitations and review signed test claims. No
+              payment will be made.
+            </p>
+            <form onSubmit={login} aria-busy={busy}>
+              <label htmlFor="organiser-password">Workspace password</label>
+              <div className="password-field">
+                <input
+                  id="organiser-password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  aria-describedby="organiser-password-help"
+                  required
+                  maxLength={256}
+                />
+                <button
+                  className="password-toggle"
+                  type="button"
+                  aria-controls="organiser-password"
+                  aria-pressed={showPassword}
+                  onClick={() => setShowPassword((visible) => !visible)}
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+              <p className="auth-help" id="organiser-password-help">
+                Use the separate TESTNET organiser password. This is not your
+                Nimiq Pay PIN or recovery phrase.
+              </p>
+              <button type="submit" disabled={busy}>
+                {busy ? "Signing in…" : "Sign in to workspace"}
+              </button>
+            </form>
+            <Notice text={error} />
+            <p className="muted auth-access-note">
+              This is a separate TESTNET organiser account. Contributors use
+              their invitation links and never need this password.
+            </p>
+            <p className="auth-contributor-note">
+              <strong>Here to claim a reward?</strong> In Nimiq Pay, open Mini
+              Apps → Custom URL and paste the complete invitation link. You do
+              not need to sign in here.
+            </p>
+          </section>
+        )}
       </>
     );
   return (
@@ -428,6 +526,11 @@ function Organiser({
         <div>
           <p className="eyebrow">Organiser workspace</p>
           <h1>Your campaigns</h1>
+          {claimsOnly && walletAddress && (
+            <p className="muted">
+              Signed in with Nimiq Pay · <code>{walletAddress}</code>
+            </p>
+          )}
         </div>
         <button
           className="quiet"
@@ -435,6 +538,7 @@ function Organiser({
             try {
               await api("/logout", {});
               setAuthenticated(false);
+              setWalletAddress(null);
               setSelected(undefined);
               setCreating(false);
             } catch (e) {
