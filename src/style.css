@@ -1159,7 +1159,6 @@ main {
   }
 }
 
-
 /* Final mobile readability pass: keep helper copy clear of actions. */
 .auth .auth-help {
   margin: 0;
