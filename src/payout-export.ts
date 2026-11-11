@@ -8,7 +8,9 @@ export function getApprovedUnpaidClaims(claims: Claim[]): Claim[] {
 
 function canonicalNim(luna: number): string {
   if (!Number.isSafeInteger(luna) || luna < 0) {
-    throw new RangeError("Reward amount must be a non-negative safe integer in Luna.");
+    throw new RangeError(
+      "Reward amount must be a non-negative safe integer in Luna.",
+    );
   }
   const whole = Math.trunc(luna / 100_000);
   const fraction = String(luna % 100_000)

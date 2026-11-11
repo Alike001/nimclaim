@@ -820,7 +820,8 @@ function ApprovedRewards({
 
   async function copy(value: string, label: string) {
     try {
-      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      if (!navigator.clipboard?.writeText)
+        throw new Error("Clipboard unavailable");
       await navigator.clipboard.writeText(value);
       setFeedback(`${label} copied to clipboard.`);
     } catch {
@@ -832,9 +833,12 @@ function ApprovedRewards({
 
   function downloadCsv() {
     try {
-      const blob = new Blob([buildApprovedRewardsCsv(campaign, approved, network)], {
-        type: "text/csv;charset=utf-8",
-      });
+      const blob = new Blob(
+        [buildApprovedRewardsCsv(campaign, approved, network)],
+        {
+          type: "text/csv;charset=utf-8",
+        },
+      );
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       const safeId =
@@ -849,7 +853,9 @@ function ApprovedRewards({
         "CSV downloaded. It lists approved but unpaid rewards; it is not a payment receipt.",
       );
     } catch {
-      setFeedback("CSV export is unavailable in this browser. You can copy each settlement detail instead.");
+      setFeedback(
+        "CSV export is unavailable in this browser. You can copy each settlement detail instead.",
+      );
     }
   }
 
@@ -869,14 +875,17 @@ function ApprovedRewards({
         </span>
       </div>
       <p>
-        These claims are approved but unpaid. Use the verified recipient
-        address and reward amount to arrange any transfer separately. NimClaim
-        does not reserve funds, send NIM or verify external transfers.
+        These claims are approved but unpaid. Use the verified recipient address
+        and reward amount to arrange any transfer separately. NimClaim does not
+        reserve funds, send NIM or verify external transfers.
       </p>
       {approved.length === 0 ? (
         <div className="approved-empty">
           <strong>No approved rewards yet</strong>
-          <p>Approved claims will appear here with their recipient address and amount.</p>
+          <p>
+            Approved claims will appear here with their recipient address and
+            amount.
+          </p>
         </div>
       ) : (
         <div className="approved-rewards-list">
@@ -929,7 +938,8 @@ function ApprovedRewards({
           Download approved rewards CSV
         </button>
         <p className="muted" role="status" aria-live="polite">
-          {feedback || "The export is a handoff list only, not proof of payment."}
+          {feedback ||
+            "The export is a handoff list only, not proof of payment."}
         </p>
       </div>
     </section>

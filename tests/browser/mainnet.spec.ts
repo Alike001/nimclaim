@@ -200,12 +200,16 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
   await expect(
     page.getByRole("heading", { name: "Approved rewards" }),
   ).toBeVisible();
-  await expect(page.getByText("1 reward approved", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("1 reward approved", { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Copy settlement details" }),
   ).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download approved rewards CSV" }).click();
+  await page
+    .getByRole("button", { name: "Download approved rewards CSV" })
+    .click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/^nimclaim-approved-rewards-/);
   const downloadPath = await download.path();

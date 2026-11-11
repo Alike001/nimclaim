@@ -52,11 +52,7 @@ test("approved handoff includes only approved claims without a payment record", 
 });
 
 test("CSV preserves exact NIM precision and labels settlement as unpaid", () => {
-  const csv = buildApprovedRewardsCsv(
-    campaign,
-    [approved, pending],
-    "mainnet",
-  );
+  const csv = buildApprovedRewardsCsv(campaign, [approved, pending], "mainnet");
   assert.ok(csv.startsWith("\uFEFF"));
   assert.ok(csv.includes("12.34567"));
   assert.ok(csv.includes("MAINNET"));
@@ -71,11 +67,7 @@ test("CSV neutralizes spreadsheet formulas in untrusted campaign titles", () => 
     ...campaign,
     title: '=HYPERLINK("https://example.invalid","open")',
   };
-  const csv = buildApprovedRewardsCsv(
-    unsafeCampaign,
-    [approved],
-    "mainnet",
-  );
+  const csv = buildApprovedRewardsCsv(unsafeCampaign, [approved], "mainnet");
   assert.ok(csv.includes("'=HYPERLINK"));
   assert.ok(csv.includes('""open""'));
 });
