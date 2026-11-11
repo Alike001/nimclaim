@@ -820,6 +820,12 @@ function ApprovedRewards({
   reload: () => Promise<void>;
 }) {
   const approved = getApprovedClaims(claims);
+  const paidCount = approved.filter(
+    (claim) =>
+      claim.payment?.state === "CONFIRMED" &&
+      claim.payment.receipt?.executionResult === true,
+  ).length;
+  const unpaidCount = approved.length - paidCount;
   const [feedback, setFeedback] = useState("");
 
   async function copy(value: string, label: string) {
