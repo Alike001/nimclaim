@@ -1,5 +1,5 @@
 import { WalletDiagnostics } from "./WalletDiagnostics";
-import { CampaignWallet, Payout, PaymentStatus } from "./Payments";
+import { CampaignWallet, Payout, PaymentStatus, ExternalPaymentVerifier } from "./Payments";
 import type { PaymentGate } from "../shared/payments";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
@@ -12,7 +12,7 @@ import {
   type Claim,
 } from "./api";
 import {
-  getApprovedUnpaidClaims,
+  getApprovedClaims,
   buildApprovedRewardsCsv,
   buildPayoutDetails,
 } from "./payout-export";
@@ -28,6 +28,7 @@ type Config = {
   origin: string;
   staging?: boolean;
   claimsOnly?: boolean;
+  manualPaymentVerification?: boolean;
 };
 function reviewLabel(status: string, staging?: boolean, claimsOnly?: boolean) {
   if (staging && status === "payment-ready") return "Approved for testing";
@@ -792,7 +793,7 @@ function CreateCampaign({
           {staging
             ? "TESTNET testing only. This amount is illustrative and non-redeemable. No NIM is held, owed, reserved, transferred or paid. Approval records an organiser review decision only."
             : claimsOnly
-              ? "This is a declared reward commitment only. NimClaim does not hold, send or verify NIM payouts."
+              ? "This is a NIM reward commitment. NimClaim never holds or sends NIM; organisers pay through Nimiq Pay and can verify the completed transfer here."
               : "No funds are held or sent. The amount is a reward commitment for organiser review."}
         </p>
         <Notice text={error} />
@@ -808,12 +809,16 @@ function ApprovedRewards({
   campaign,
   claims,
   network,
+  manualPaymentVerification,
+  reload,
 }: {
   campaign: Campaign;
   claims: Claim[];
   network: string;
+  manualPaymentVerification: boolean;
+  reload: () => Promise<void>;
 }) {
-  const approved = getApprovedUnpaidClaims(claims);
+  const approved = getApprovedClaims(claims);
   const [feedback, setFeedback] = useState("");
 
   async function copy(value: string, label: string) {
@@ -848,7 +853,7 @@ function ApprovedRewards({
       anchor.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       setFeedback(
-        "CSV downloaded. This list does not verify payments made outside NimClaim and is not a payment receipt.",
+        "CSV downloaded with each approved reward's current verified or unpaid status.",
       );
     } catch {
       setFeedback(
@@ -873,21 +878,15 @@ function ApprovedRewards({
         </span>
       </div>
       <p>
-        These claims are approved in NimClaim, with no verified payment recorded
-        here. Use the recipient address and amount to arrange settlement outside
-        NimClaim. A transfer you send separately will not change this status.
+        Review every approved reward here. Send the exact NIM amount to the
+        verified recipient through Nimiq Pay, then submit the transaction hash
+        below. NimClaim independently checks the transfer before recording it
+        as paid. NimClaim never sends or holds the funds.
       </p>
       <p className="muted">
-        Already sent NIM? Check the transaction hash, recipient, amount and
-        finality on{" "}
-        <a
-          href="https://nimiq.watch/"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          a Nimiq mainnet explorer
-        </a>
-        . NimClaim does not hold funds or verify external transfers.
+        Payments are verified against the Nimiq MAINNET chain. A hash alone is
+        not proof: the sender, recipient, amount, successful execution and
+        finality must all match.
       </p>
       {approved.length === 0 ? (
         <div className="approved-empty">
@@ -905,7 +904,12 @@ function ApprovedRewards({
                 <strong>
                   {nim(campaign.amount)} <small>NIM</small>
                 </strong>
-                <span className="badge payment-ready">Approved · unpaid</span>
+                <span className={`badge ${claim.payment ? "paid" : "payment-ready"}`}>
+                  {claim.payment?.state === "CONFIRMED" &&
+                  claim.payment.receipt?.executionResult === true
+                    ? "Paid · verified on-chain"
+                    : "Approved · unpaid"}
+                </span>
               </div>
               <p className="approved-reward-label">Verified recipient</p>
               <code className="address approved-reward-address">
@@ -914,6 +918,12 @@ function ApprovedRewards({
               <p className="approved-reward-reference">
                 Claim reference <code>{claim.id}</code>
               </p>
+              <ExternalPaymentVerifier
+                claim={claim}
+                amount={campaign.amount}
+                enabled={manualPaymentVerification}
+                reload={reload}
+              />
               <div className="actions approved-reward-actions">
                 <button
                   className="secondary"
@@ -971,6 +981,7 @@ function CampaignDetail({
     paymentGate: PaymentGate;
     staging?: boolean;
     claimsOnly?: boolean;
+    manualPaymentVerification?: boolean;
     invitations: { id: string; created: number }[];
     claims: Claim[];
   }>();
@@ -1060,7 +1071,7 @@ function CampaignDetail({
               {data.staging
                 ? "Illustrative TESTNET amount"
                 : data.claimsOnly
-                  ? "per contributor · unpaid commitment"
+                  ? "per contributor · pay in Nimiq Pay, verify here"
                   : "per contributor"}
             </span>
           </div>
@@ -1092,7 +1103,7 @@ function CampaignDetail({
           {data.staging
             ? "Invitations are for claim-workflow testing only. One link uses one testing slot. Share it directly with the intended tester. No payment will be made."
             : data.claimsOnly
-              ? "One link, one claim slot. Anyone with the link can submit a claim, so share it only with the intended recipient. NimClaim does not send NIM."
+              ? "One link, one claim slot. Share it only with the intended recipient. Organisers send approved rewards in Nimiq Pay and verify the transaction in NimClaim."
               : "One link, one reward slot. Anyone with the link can request the reward. Share it directly with the intended recipient."}
         </p>
         <button
@@ -1163,7 +1174,13 @@ function CampaignDetail({
         )}
       </section>
       {data.claimsOnly && (
-        <ApprovedRewards campaign={c} claims={data.claims} network={network} />
+        <ApprovedRewards
+          campaign={c}
+          claims={data.claims}
+          network={network}
+          manualPaymentVerification={!!data.manualPaymentVerification}
+          reload={load}
+        />
       )}
       <Notice text={error} />
       <div className="toolbar">
@@ -1218,14 +1235,18 @@ function CampaignDetail({
                 </button>
               </div>
             )}
+            {data.claimsOnly && claim.payment && (
+              <PaymentStatus payment={claim.payment} />
+            )}
             {claim.status === "payment-ready" && !claim.payment && (
               <p className="muted">
                 {data.staging ? (
                   "Approved for testing — no payment will be made"
                 ) : data.claimsOnly ? (
                   <>
-                    Approved for {nim(c.amount)} NIM. NimClaim cannot send or
-                    verify payment.
+                    Approved for {nim(c.amount)} NIM. Send from the authorised
+                    campaign wallet in Nimiq Pay, then verify the transaction
+                    in Approved Rewards.
                   </>
                 ) : (
                   <>
