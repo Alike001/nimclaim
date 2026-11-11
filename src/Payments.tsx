@@ -60,7 +60,7 @@ export function PaymentStatus({
             block {payment.receipt.macroNumber}
           </p>
           <p>
-            Verified {date(payment.receipt.verifiedAt)} against independent MAINNET RPC.
+            Verified {date(payment.receipt.verifiedAt)} against independent {payment.intent.network.toUpperCase()} RPC.
             {payment.receipt.source === "external" ? " The transfer was sent separately through Nimiq Pay; NimClaim did not broadcast or custody funds." : ""}
           </p>
           <code className="address">{payment.receipt.hash}</code>
