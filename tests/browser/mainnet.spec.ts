@@ -138,7 +138,12 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
   );
   await page.locator("header .header-access").click();
   await expect(page.locator("#organiser-access")).toBeVisible();
-  await page.getByRole("button", { name: "＋ Create campaign" }).click();
+  await expect(
+    page.getByRole("button", { name: "＋ Create campaign" }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Create your first campaign", exact: true })
+    .click();
   await page
     .getByLabel("Title", { exact: true })
     .fill("Synthetic mainnet UI test");
