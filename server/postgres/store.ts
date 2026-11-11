@@ -514,8 +514,9 @@ export class PostgresStore {
     if (this.network !== "mainnet")
       fail(404, "External MAINNET payment verification is unavailable here.");
     if (!organiserId) fail(401, "Organiser session is required.");
-    if (!this.rpc)
-      fail(503, "MAINNET read-only transaction verification is not configured.");
+    const rpc = this.rpc;
+    if (!rpc)
+      return fail(503, "MAINNET read-only transaction verification is not configured.");
     const hash = hashSchema.parse(hashInput.toLowerCase());
     const claim = (
       await this.read(
@@ -547,26 +548,25 @@ export class PostgresStore {
       fail(409, "This transaction hash has already been recorded or this claim is already paid.");
     }
 
-    let verification;
-    try {
-      verification = await verifyBasicTransfer(
-        this.rpc,
-        {
-          sender: claim.sender,
-          recipient: claim.address,
-          amount: Number(claim.amount),
-          network: "mainnet",
-        },
-        hash,
-        Date.now(),
+    const verification = await verifyBasicTransfer(
+      rpc,
+      {
+        sender: claim.sender,
+        recipient: claim.address,
+        amount: Number(claim.amount),
+        network: "mainnet",
+      },
+      hash,
+      Date.now(),
+    ).catch((error) => {
+      if (error instanceof EvidenceMismatch) return fail(409, error.message);
+      return fail(
+        503,
+        "MAINNET transaction verification is temporarily unavailable. No payment was recorded.",
       );
-    } catch (error) {
-      if (error instanceof EvidenceMismatch)
-        fail(409, error.message);
-      fail(503, "MAINNET transaction verification is temporarily unavailable. No payment was recorded.");
-    }
+    });
     if (verification.state !== "CONFIRMED" || !verification.receipt)
-      fail(409, verification.reason);
+      return fail(409, verification.reason);
 
     const receipt = verification.receipt;
     await transaction(this.pool, async (c) => {
@@ -647,6 +647,7 @@ export class PostgresStore {
     const receipt: Receipt = {
       hash: row.hash,
       blockNumber: Number(row.block_number),
+      validityStartHeight: Number(row.validity_start_height),
       blockHash: row.block_hash,
       macroNumber: Number(row.macro_number),
       macroHash: row.macro_hash,
