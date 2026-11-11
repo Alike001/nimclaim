@@ -78,7 +78,7 @@ function Landing({
             real Nimiq Pay wallet signatures before approving a claim.
           </p>
           <div className="landing-actions">
-            <a className="landing-primary" href="#organiser">
+            <a className="landing-primary" href="#organiser-access">
               Open organiser workspace <span aria-hidden="true">↗</span>
             </a>
             <a className="landing-secondary" href="#workflow">
@@ -163,7 +163,7 @@ function Landing({
               : "Approval marks a reward as ready for payment, not paid. Native sending remains blocked pending sender-binding and independent settlement verification."}
           </p>
         </div>
-        <a href="#organiser">Organiser access <span aria-hidden="true">→</span></a>
+        <a href="#organiser-access">Organiser access <span aria-hidden="true">→</span></a>
       </div>
     </section>
   );
@@ -236,7 +236,7 @@ export default function App() {
               staging={config.staging}
               claimsOnly={config.claimsOnly}
               network={config.network}
-              showLanding={hash !== "#organiser"}
+              showLanding={hash !== "#organiser-access"}
             />
           ))}
       </main>
