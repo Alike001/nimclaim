@@ -215,7 +215,7 @@ export function CampaignWallet({
   return (
     <section className="panel">
       <h2>
-        {claimsOnly ? "Organiser signing wallet" : "Organiser payout wallet"}
+        {claimsOnly ? "Organiser payment wallet" : "Organiser payout wallet"}
       </h2>
       {wallet ? (
         <>
