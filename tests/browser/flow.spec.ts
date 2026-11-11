@@ -75,7 +75,17 @@ test("landing makes organiser and contributor paths clear and password visibilit
 });
 async function invitation(page: Page, staging = false) {
   await login(page);
-  await page.getByRole("button", { name: "＋ Create campaign" }).click();
+  const firstCampaignButton = page.getByRole("button", {
+    name: "Create your first campaign",
+    exact: true,
+  });
+  if (await firstCampaignButton.isVisible()) {
+    await firstCampaignButton.click();
+  } else {
+    await page
+      .getByRole("button", { name: "＋ Create campaign", exact: true })
+      .click();
+  }
   await page
     .getByLabel("Title", { exact: true })
     .fill(`Browser test ${Date.now()}`);
@@ -107,8 +117,29 @@ async function invitation(page: Page, staging = false) {
     .getByRole("button", { name: "Create campaign", exact: true })
     .click();
   await page.getByRole("button", { name: "Create unique invitation" }).click();
-  const url = await page.getByLabel("Save this invitation now.").inputValue();
+  const invitationField = page.getByLabel(
+    "Save your private invitation link before leaving this page.",
+  );
+  const url = await invitationField.inputValue();
   expect(url).toMatch(/#claim=[a-f0-9]{64}$/);
+  if (test.info().project.name === "mobile-chromium") {
+    const copyBox = await page
+      .getByRole("button", { name: "Copy invitation", exact: true })
+      .boundingBox();
+    const savedBox = await page
+      .getByRole("button", { name: "I have saved this link", exact: true })
+      .boundingBox();
+    expect(copyBox).not.toBeNull();
+    expect(savedBox).not.toBeNull();
+    expect(savedBox!.y).toBeGreaterThan(copyBox!.y + copyBox!.height);
+  }
+  await page
+    .getByRole("button", { name: "I have saved this link", exact: true })
+    .click();
+  await expect(invitationField).toHaveValue(url);
+  await expect(page.locator(".link-status")).toHaveText(
+    "Saved. Keep this link private. It remains visible until you leave this page.",
+  );
   return url;
 }
 async function injectWallet(

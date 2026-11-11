@@ -625,8 +625,8 @@ function Organiser({
                   : "Start your first campaign."}
               </h2>
               <p>
-                Create a campaign, then send each contributor their own
-                private invitation link.
+                Create a campaign, then send each contributor their own private
+                invitation link.
               </p>
               <button onClick={() => setCreating(true)}>
                 Create your first campaign
@@ -812,7 +812,8 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [link, setLink] = useState(""),
-    [copied, setCopied] = useState(false);
+    [copied, setCopied] = useState(false),
+    [saved, setSaved] = useState(false);
   const load = useCallback(
     async () => setData(await api(`/campaigns/${id}`)),
     [id],
@@ -828,6 +829,7 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
     setBusy(true);
     setError("");
     setCopied(false);
+    setSaved(false);
     try {
       const r = await api(`/campaigns/${id}/invitations`, {});
       setLink(r.url);
@@ -942,25 +944,35 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
         </button>
         {link && (
           <div className="link-box">
-            <label>
-              Save this invitation now. It cannot be retrieved later.
+            <label htmlFor={`invitation-link-${id}`}>
+              Save your private invitation link before leaving this page.
               <textarea
-                rows={3}
+                id={`invitation-link-${id}`}
+                aria-describedby={`invitation-link-help-${id}`}
+                rows={5}
                 readOnly
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
                 value={link}
                 onFocus={(e) => e.target.select()}
               />
             </label>
+            <p className="link-help" id={`invitation-link-help-${id}`}>
+              Anyone with this link can submit the claim for this slot. Keep it
+              private. If copying fails, tap the field to select the complete
+              link and copy it manually. NimClaim cannot retrieve it after you
+              leave this page.
+            </p>
             <div className="actions">
               <button
-                className="secondary"
                 onClick={async () => {
                   try {
                     await navigator.clipboard.writeText(link);
                     setCopied(true);
                   } catch {
                     setError(
-                      "Clipboard unavailable. Select and copy the invitation manually.",
+                      "Clipboard unavailable. Tap the invitation field, select the full link and copy it manually.",
                     );
                   }
                 }}
@@ -968,15 +980,20 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
                 {copied ? "Copied" : "Copy invitation"}
               </button>
               <button
-                className="text-button"
-                onClick={() => {
-                  setLink("");
-                  setCopied(false);
-                }}
+                className="secondary"
+                disabled={saved}
+                onClick={() => setSaved(true)}
               >
-                I have saved this link
+                {saved ? "Invitation saved" : "I have saved this link"}
               </button>
             </div>
+            <p className="link-status" role="status" aria-live="polite">
+              {saved
+                ? "Saved. Keep this link private. It remains visible until you leave this page."
+                : copied
+                  ? "Copied to clipboard. Keep this invitation private."
+                  : "Copy the link or select it manually, then confirm when it is saved somewhere safe."}
+            </p>
           </div>
         )}
       </section>
