@@ -438,6 +438,11 @@ function Organiser({
               organisers should create one. Each wallet gets its own private
               campaigns and claim reviews.
             </p>
+            <p className="auth-help">
+              Your Nimiq wallet controls access to this workspace. NimClaim
+              cannot recover it if you lose access to that wallet; keep your
+              wallet backup safe.
+            </p>
             <details className="auth-legacy-link">
               <summary>Already used NimClaim? Link your previous workspace</summary>
               <p>
