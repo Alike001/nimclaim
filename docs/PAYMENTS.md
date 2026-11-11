@@ -1,3 +1,5 @@
+# Native Nimiq Pay HTLC payouts
+
 ## MAINNET external transfer verification
 
 The production MAINNET PostgreSQL path has a read-only verification route:
@@ -25,7 +27,6 @@ It is a demo dependency, not a production SLA. Operate a dedicated MAINNET
 node or a trusted RPC provider before treating this as a general production
 service.
 
-# Native Nimiq Pay HTLC payouts
 
 The campaign organiser's local wallet **authorises** a reward. The active Nimiq Pay remote HTLC **funds** it. These are different addresses. `payment-ready` remains an approval, and only independently verified, finalized successful execution is paid.
 
