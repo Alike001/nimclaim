@@ -6,7 +6,7 @@ import { createPool, neonConnection } from "./db.js";
 import { verifySchema } from "./schema.js";
 import { verifyRuntimeRole } from "./permissions.js";
 import { PostgresStore } from "./store.js";
-import { HttpRpc } from "../rpc.js";
+import { HttpRpc, type Rpc } from "../rpc.js";
 import { createPostgresApp } from "./app.js";
 import { stagingGateway, stagingRoute } from "../staging-gateway.js";
 
@@ -116,7 +116,7 @@ export async function startPostgresMainnet(
   pool: Pool,
   origin: string,
   staticDir = "./dist",
-  rpc?: HttpRpc,
+  rpc?: Rpc,
 ) {
   await verifyRuntimeRole(pool, true);
   await verifySchema(pool, true, mainnetIdentity);
