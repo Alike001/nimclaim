@@ -40,10 +40,7 @@ jobs:
         run: npm run check
 
       - name: Check formatting
-        run: |
-          npx prettier --write src/App.tsx src/style.css
-          git diff -- src/App.tsx src/style.css
-          npm run format:check
+        run: npm run format:check
 
   postgres:
     name: PostgreSQL 17 integration tests
