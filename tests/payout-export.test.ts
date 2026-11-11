@@ -144,5 +144,5 @@ test("copied settlement details include exact recipient, amount and unpaid warni
   assert.ok(details.includes("12.34567 NIM"));
   assert.ok(details.includes("Approved · unpaid"));
   assert.ok(details.includes("No verified payment recorded"));
-  assert.ok(details.includes("not proof of payment"));
+  assert.ok(details.includes("verify its transaction hash in NimClaim"));
 });
