@@ -14,5 +14,5 @@ writeFileSync(
   { flag: "wx", mode: 0o600 },
 );
 console.log(
-  "Fresh MAINNET credentials saved to ignored .local/mainnet/credentials.json. Store the password securely; use this file only for the explicit local bootstrap command. Never upload the password, hash or file to Render.",
+  "Fresh MAINNET legacy-link credentials saved to ignored .local/mainnet/credentials.json. Store the password securely; the hash is used for one-time bootstrap and the password can link the original workspace to its owner's wallet once. Never upload the password, hash or file to Render.",
 );
