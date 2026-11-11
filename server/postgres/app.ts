@@ -32,7 +32,10 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
     ? {
         ...disabledGate,
         reasons: [
-          "MAINNET spending and payment verification are unavailable. Approved claims remain unpaid.",
+          store.rpc
+            ? "NIM transfers are sent separately through Nimiq Pay; NimClaim can verify an exact finalized MAINNET transfer by transaction hash."
+            : "NIM transfers are sent separately through Nimiq Pay. Configure the read-only MAINNET RPC to verify payments by transaction hash.",
+          "NimClaim never broadcasts, signs or custodies NIM payments.",
         ],
       }
     : disabledGate;
@@ -50,9 +53,12 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
       if (!path.startsWith("/api/")) return serveStatic(path, res, staticDir);
       if (!["GET", "POST"].includes(req.method ?? ""))
         fail(405, "Method not allowed.");
+      const externalPaymentVerify =
+        /^\/api\/claims\/([a-f0-9-]{36})\/payment\/verify$/.exec(path);
       if (
         /^\/api\/payments(?:\/|$)/.test(path) ||
-        /^\/api\/claims\/[^/]+\/payment(?:\/|$)/.test(path) ||
+        (/^\/api\/claims\/[^/]+\/payment(?:\/|$)/.test(path) &&
+          !(mainnet && req.method === "POST" && externalPaymentVerify)) ||
         (!mainnet && /^\/api\/campaigns\/[^/]+\/wallet(?:\/|$)/.test(path))
       )
         fail(
@@ -75,8 +81,14 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
           network: store.network,
           origin: store.origin,
           staging: !mainnet,
-          ...(mainnet ? { claimsOnly: true } : {}),
+          ...(mainnet
+            ? {
+                claimsOnly: true,
+                manualPaymentVerification: !!store.rpc,
+              }
+            : {}),
           mobileTest: false,
+          manualPaymentVerification: mainnet && !!store.rpc,
         });
       await store.expire();
       const session = new RegExp(
@@ -318,6 +330,19 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
           201,
           await store.issue(invite[1], mainnet ? organiserId : undefined),
         );
+      }
+      if (externalPaymentVerify && req.method === "POST" && mainnet) {
+        const { hash } = z
+          .object({ hash: z.string().regex(/^[a-f0-9]{64}$/i) })
+          .strict()
+          .parse(body);
+        return send(200, {
+          claim: await store.verifyExternalPayment(
+            externalPaymentVerify[1],
+            hash.toLowerCase(),
+            organiserId,
+          ),
+        });
       }
       const decision = /^\/api\/claims\/([a-f0-9-]{36})\/decision$/.exec(path);
       if (decision && req.method === "POST") {
