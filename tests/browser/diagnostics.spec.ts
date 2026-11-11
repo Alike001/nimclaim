@@ -77,7 +77,9 @@ test("public staging does not expose diagnostics or local credential setup instr
   ).toHaveCount(0);
   await page.goto("/");
   await expect(
-    page.getByText("Use your separate staging organiser credentials."),
+    page.getByText(
+      "Use the separate TESTNET organiser password. This is not your Nimiq Pay PIN or recovery phrase.",
+    ),
   ).toBeVisible();
   await expect(page.getByText("First visit?", { exact: false })).toHaveCount(0);
 });

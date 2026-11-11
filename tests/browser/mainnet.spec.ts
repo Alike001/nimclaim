@@ -56,8 +56,13 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
       { exact: false },
     ),
   ).toBeVisible();
-  await page.getByLabel("Organiser password").fill("browser-test-password");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByLabel("Workspace password").fill("browser-test-password");
+  await page
+    .getByRole("button", { name: "Sign in to workspace", exact: true })
+    .click();
+  await expect(page.locator("header .header-access")).toHaveText("Workspace");
+  await page.locator("header .header-access").click();
+  await expect(page.locator("#organiser-access")).toBeVisible();
   await page.getByRole("button", { name: "＋ Create campaign" }).click();
   await page
     .getByLabel("Title", { exact: true })
@@ -65,8 +70,8 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
   await page
     .getByLabel("Description")
     .fill("Isolated automated test; no actual NIM transfers.");
-  await page.getByLabel("Reward amount (NIM)").fill("0.12345");
-  await page.getByLabel("Available rewards").fill("1");
+  await page.getByLabel("Reward commitment (NIM)").fill("0.12345");
+  await page.getByLabel("Available claim slots").fill("1");
   await page
     .getByLabel("Expiry date and time")
     .fill(new Date(Date.now() + 86400000).toISOString().slice(0, 16));
@@ -83,6 +88,14 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
   await page
     .getByRole("button", { name: "Connect Nimiq Pay", exact: true })
     .click();
+  await expect(
+    page.getByText(
+      /This signature verifies wallet ownership and submits your claim for organiser review on MAINNET/,
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/does not request or authorise a NIM transfer/),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Sign & submit claim" }).click();
   await expect(
     page.getByRole("heading", { name: "Your request is with the organiser." }),
@@ -91,7 +104,7 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
   await page.getByRole("button", { name: /Synthetic mainnet UI test/ }).click();
   await page.getByRole("button", { name: "Approve claim" }).click();
   await expect(
-    page.getByText("Payment-ready · unpaid", { exact: true }).first(),
+    page.getByText("Approved · unpaid", { exact: true }).first(),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: /Review.*payment/i }),
