@@ -534,7 +534,7 @@ body {
 button, .landing-primary, .landing-secondary {
   transition: background-color 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
 }
-button:hover:not(:disabled) { filter: none; background: #104c3e; }
+button:hover:not(:disabled):not(.quiet):not(.secondary):not(.text-button) { filter: none; background: #104c3e; }
 button.quiet:hover:not(:disabled),
 button.secondary:hover:not(:disabled) {
   color: var(--nc-ink);
