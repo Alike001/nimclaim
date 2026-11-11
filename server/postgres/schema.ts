@@ -51,6 +51,7 @@ export async function verifySchema(
     network: "testnet",
     deployment: "isolated-neon-testnet-staging-v1",
     directory: migrationDirectory,
+    schemaHash: contract.sha256,
   },
 ) {
   await transaction(pool, async (c) => {
@@ -69,7 +70,7 @@ export async function verifySchema(
       JSON.stringify(migrationPlan(identity.directory))
     )
       throw new Error("Missing or incorrect schema migrations");
-    if ((await schemaHash(c)) !== contract.sha256)
+    if ((await schemaHash(c)) !== (identity.schemaHash ?? contract.sha256))
       throw new Error("Schema differs from reviewed migrations");
     const settings = (
       await c.query("SELECT key,value FROM public.settings ORDER BY key")
@@ -88,6 +89,20 @@ export async function verifySchema(
       ).rows[0];
       if (!row || !/^[a-f0-9]{64}:[a-f0-9]{128}$/.test(row.password_hash))
         throw new Error("Staging organiser missing or invalid");
+    }
+    if (identity.network === "mainnet") {
+      const legacy = (
+        await c.query("SELECT id FROM public.organisers WHERE legacy=true")
+      ).rows;
+      if (legacy.length !== 1)
+        throw new Error("MAINNET legacy workspace migration is incomplete");
+      const orphaned = (
+        await c.query(
+          "SELECT count(*) AS n FROM public.campaigns p LEFT JOIN public.organisers o ON o.id=p.organiser_id WHERE o.id IS NULL",
+        )
+      ).rows[0].n;
+      if (Number(orphaned) !== 0)
+        throw new Error("MAINNET campaign ownership is incomplete");
     }
   });
 }

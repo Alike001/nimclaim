@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import mainnetSchemaContract from "./mainnet-schema-contract.json" with { type: "json" };
 import { once } from "node:events";
 import type { Pool } from "pg";
 import { createPool, neonConnection } from "./db.js";
@@ -12,6 +13,7 @@ export const mainnetIdentity = {
   network: "mainnet",
   deployment: "isolated-mainnet-claims-v1",
   directory: fileURLToPath(new URL("./mainnet-migrations/", import.meta.url)),
+  schemaHash: mainnetSchemaContract.sha256,
 };
 export function mainnetConfig(env: NodeJS.ProcessEnv, administrative = false) {
   if (
@@ -80,6 +82,8 @@ export function mainnetConfig(env: NodeJS.ProcessEnv, administrative = false) {
 export function mainnetRoute(method: string, path: string) {
   return (
     stagingRoute(method, path) ||
+    (method === "POST" &&
+      ["/api/auth/challenge", "/api/auth/verify"].includes(path)) ||
     (method === "POST" &&
       /^\/api\/campaigns\/[a-f0-9-]{36}\/wallet(?:\/challenge)?$/.test(path))
   );

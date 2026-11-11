@@ -82,19 +82,53 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
       const session = new RegExp(
         `(?:^|;\\s*)${sessionName}=([a-f0-9]{64})(?:;|$)`,
       ).exec(req.headers.cookie ?? "")?.[1];
-      const authorised =
-        !!session &&
-        (
-          await store.read(
-            "SELECT hash FROM sessions WHERE hash=$1 AND expires>$2",
-            [digest(session), Date.now()],
-          )
-        ).length > 0;
+      const sessionRow = session
+        ? (
+            await store.read(
+              mainnet
+                ? "SELECT s.hash,s.organiser_id,o.wallet_address FROM sessions s JOIN organisers o ON o.id=s.organiser_id WHERE s.hash=$1 AND s.expires>$2 AND o.wallet_address IS NOT NULL"
+                : "SELECT hash FROM sessions WHERE hash=$1 AND expires>$2",
+              [digest(session), Date.now()],
+            )
+          )[0]
+        : undefined;
+      const authorised = !!sessionRow;
+      const organiserId = mainnet ? sessionRow?.organiser_id : undefined;
       if (path === "/api/session" && req.method === "GET")
-        return send(200, { authenticated: authorised });
+        return send(200, {
+          authenticated: authorised,
+          ...(mainnet && sessionRow
+            ? { walletAddress: sessionRow.wallet_address }
+            : {}),
+        });
       const cookie = (value: string, age: number) =>
         `${sessionName}=${value}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=${age}; Secure`;
+      if (mainnet && path === "/api/auth/challenge" && req.method === "POST") {
+        const { intent } = z
+          .object({ intent: z.enum(["login", "register", "link"]) })
+          .strict()
+          .parse(body);
+        return send(201, await store.organiserAuthChallenge(intent));
+      }
+      if (mainnet && path === "/api/auth/verify" && req.method === "POST") {
+        const proof = z
+          .object({
+            challengeId: z.string().uuid(),
+            publicKey: z.string().regex(/^[a-f0-9]{64}$/i),
+            signature: z.string().regex(/^[a-f0-9]{128}$/i),
+            legacyPassword: z.string().min(1).max(256).optional(),
+          })
+          .strict()
+          .parse(body);
+        const result = await store.authenticateOrganiser(proof);
+        res.setHeader("Set-Cookie", cookie(result.token, 8 * 3600));
+        return send(200, {
+          authenticated: true,
+          organiser: result.organiser,
+        });
+      }
       if (path === "/api/login" && req.method === "POST") {
+        if (mainnet) fail(404, "Use Nimiq Pay wallet sign-in.");
         const { password } = z
           .object({ password: z.string().min(1).max(256) })
           .strict()
@@ -129,9 +163,10 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
         )[0];
         if (!inv) fail(404, "Invitation not found. Check your link.");
         const campaign = (
-          await store.read("SELECT * FROM campaigns WHERE id=$1", [
-            inv.campaign_id,
-          ])
+          await store.read(
+            "SELECT id,title,description,amount,slots,expires,created FROM campaigns WHERE id=$1",
+            [inv.campaign_id],
+          )
         )[0];
         return send(200, {
           campaign,
@@ -167,7 +202,11 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
           z.object({}).strict().parse(body);
           return send(
             201,
-            await store.walletChallenge(walletRoute[1], digest(session!)),
+            await store.walletChallenge(
+              walletRoute[1],
+              digest(session!),
+              organiserId,
+            ),
           );
         }
         const proof = z
@@ -183,13 +222,17 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
             walletRoute[1],
             digest(session!),
             proof,
+            organiserId,
           ),
         });
       }
       if (path === "/api/campaigns" && req.method === "GET")
         return send(200, {
           campaigns: await store.read(
-            `SELECT c.*,(SELECT count(*) FROM invitations WHERE campaign_id=c.id) AS issued,(SELECT count(*) FROM claims WHERE campaign_id=c.id) AS claimed FROM campaigns c ORDER BY created DESC`,
+            mainnet
+              ? `SELECT c.id,c.title,c.description,c.amount,c.slots,c.expires,c.created,(SELECT count(*) FROM invitations WHERE campaign_id=c.id) AS issued,(SELECT count(*) FROM claims WHERE campaign_id=c.id) AS claimed FROM campaigns c WHERE c.organiser_id=$1 ORDER BY created DESC`
+              : `SELECT c.id,c.title,c.description,c.amount,c.slots,c.expires,c.created,(SELECT count(*) FROM invitations WHERE campaign_id=c.id) AS issued,(SELECT count(*) FROM claims WHERE campaign_id=c.id) AS claimed FROM campaigns c ORDER BY created DESC`,
+            mainnet ? [organiserId] : [],
           ),
         });
       if (path === "/api/campaigns" && req.method === "POST") {
@@ -203,16 +246,29 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
           fail(400, "Amount is outside the safe integer range.");
         const campaign = (
           await store.read(
-            "INSERT INTO campaigns VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *",
-            [
-              randomUUID(),
-              input.title,
-              input.description,
-              amount,
-              input.slots,
-              input.expires,
-              now,
-            ],
+            mainnet
+              ? "INSERT INTO campaigns (id,title,description,amount,slots,expires,created,organiser_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,title,description,amount,slots,expires,created"
+              : "INSERT INTO campaigns VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,title,description,amount,slots,expires,created",
+            mainnet
+              ? [
+                  randomUUID(),
+                  input.title,
+                  input.description,
+                  amount,
+                  input.slots,
+                  input.expires,
+                  now,
+                  organiserId,
+                ]
+              : [
+                  randomUUID(),
+                  input.title,
+                  input.description,
+                  amount,
+                  input.slots,
+                  input.expires,
+                  now,
+                ],
           )
         )[0];
         return send(201, { campaign });
@@ -220,7 +276,12 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
       const detail = /^\/api\/campaigns\/([a-f0-9-]{36})$/.exec(path);
       if (detail && req.method === "GET") {
         const campaign = (
-          await store.read("SELECT * FROM campaigns WHERE id=$1", [detail[1]])
+          await store.read(
+            mainnet
+              ? "SELECT id,title,description,amount,slots,expires,created FROM campaigns WHERE id=$1 AND organiser_id=$2"
+              : "SELECT id,title,description,amount,slots,expires,created FROM campaigns WHERE id=$1",
+            mainnet ? [detail[1], organiserId] : [detail[1]],
+          )
         )[0];
         if (!campaign) fail(404, "Campaign not found.");
         const claims = [];
@@ -253,7 +314,10 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
       );
       if (invite && req.method === "POST") {
         z.object({}).strict().parse(body);
-        return send(201, await store.issue(invite[1]));
+        return send(
+          201,
+          await store.issue(invite[1], mainnet ? organiserId : undefined),
+        );
       }
       const decision = /^\/api\/claims\/([a-f0-9-]{36})\/decision$/.exec(path);
       if (decision && req.method === "POST") {
@@ -261,7 +325,13 @@ export function createPostgresApp(store: PostgresStore, staticDir = "./dist") {
           .object({ decision: z.enum(["payment-ready", "rejected"]) })
           .strict()
           .parse(body);
-        return send(200, { claim: await store.decide(decision[1], status) });
+        return send(200, {
+          claim: await store.decide(
+            decision[1],
+            status,
+            mainnet ? organiserId : undefined,
+          ),
+        });
       }
       fail(404, "Endpoint not found.");
     } catch (error) {

@@ -40,7 +40,13 @@ const updates: Record<string, string[]> = {
 export async function verifyRuntimeRole(pool: Pool, claimsOnlyMainnet = false) {
   const allowedReads: Record<string, true | string[]> = {
     ...reads,
-    ...(claimsOnlyMainnet ? { organiser_challenges: true as const } : {}),
+    ...(claimsOnlyMainnet
+      ? {
+          organiser_challenges: true as const,
+          organisers: true as const,
+          organiser_auth_challenges: true as const,
+        }
+      : {}),
   };
   const allowedInserts: Record<string, true | string[]> = {
     ...inserts,
@@ -54,13 +60,21 @@ export async function verifyRuntimeRole(pool: Pool, claimsOnlyMainnet = false) {
             "message",
             "expires",
           ],
+          organisers: ["id", "wallet_address", "public_key", "created"],
+          organiser_auth_challenges: ["id", "message", "expires"],
           campaign_wallets: true as const,
         }
       : {}),
   };
   const allowedUpdates: Record<string, string[]> = {
     ...updates,
-    ...(claimsOnlyMainnet ? { organiser_challenges: ["used"] } : {}),
+    ...(claimsOnlyMainnet
+      ? {
+          organiser_challenges: ["used"],
+          organisers: ["wallet_address", "public_key"],
+          organiser_auth_challenges: ["used"],
+        }
+      : {}),
   };
   if (claimsOnlyMainnet) {
     for (const table of [

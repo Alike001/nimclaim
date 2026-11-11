@@ -12,13 +12,16 @@ REVOKE TEMPORARY ON DATABASE nimclaim_mainnet FROM PUBLIC;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT CONNECT ON DATABASE nimclaim_mainnet TO nimclaim_app;
 GRANT USAGE ON SCHEMA public TO nimclaim_app;
-GRANT SELECT ON public.settings, public.organiser,
-  public.sessions, public.campaigns, public.invitations, public.challenges,
-  public.claims, public.events, public.staging_rate TO nimclaim_app;
+GRANT SELECT ON public.settings, public.organiser, public.organisers,
+  public.organiser_auth_challenges, public.sessions, public.campaigns,
+  public.invitations, public.challenges, public.claims, public.events,
+  public.staging_rate TO nimclaim_app;
 GRANT SELECT (version,checksum) ON public.schema_migrations TO nimclaim_app;
 GRANT SELECT (campaign_id,address,created) ON public.campaign_wallets TO nimclaim_app;
 GRANT INSERT ON public.sessions, public.campaigns, public.invitations,
   public.claims, public.staging_rate TO nimclaim_app;
+GRANT INSERT (id,wallet_address,public_key,created) ON public.organisers TO nimclaim_app;
+GRANT INSERT (id,message,expires) ON public.organiser_auth_challenges TO nimclaim_app;
 GRANT INSERT (id,invitation_id,message,expires) ON public.challenges TO nimclaim_app;
 GRANT INSERT (claim_id,status,at) ON public.events TO nimclaim_app;
 GRANT UPDATE (expires) ON public.sessions TO nimclaim_app;
@@ -32,6 +35,8 @@ GRANT UPDATE (count,until) ON public.staging_rate TO nimclaim_app;
 -- nextval/setval exists in the runtime; no sequence privileges are granted.
 GRANT SELECT ON public.organiser_challenges TO nimclaim_app;
 GRANT INSERT (id,campaign_id,session_hash,purpose,message,expires) ON public.organiser_challenges TO nimclaim_app;
-GRANT UPDATE (used) ON public.organiser_challenges TO nimclaim_app;
+GRANT UPDATE (used) ON public.organiser_challenges,
+  public.organiser_auth_challenges TO nimclaim_app;
+GRANT UPDATE (wallet_address,public_key) ON public.organisers TO nimclaim_app;
 GRANT INSERT ON public.campaign_wallets TO nimclaim_app;
 COMMIT;

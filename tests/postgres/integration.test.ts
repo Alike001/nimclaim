@@ -209,6 +209,24 @@ function client(apiPort: number, appOrigin = origin) {
       cookie = r.headers["set-cookie"]![0].split(";")[0];
       return r;
     },
+    async walletLogin(
+      signer = testSigner(),
+      intent: "login" | "register" | "link" = "register",
+      legacyPassword?: string,
+    ) {
+      const challenge = await call("/api/auth/challenge", { intent });
+      assert.equal(challenge.status, 201);
+      const proof = {
+        challengeId: challenge.body.id,
+        publicKey: signer.publicKey,
+        signature: signer.sign(challenge.body.message),
+        ...(legacyPassword === undefined ? {} : { legacyPassword }),
+      };
+      const r = await call("/api/auth/verify", proof);
+      assert.equal(r.status, 200);
+      cookie = r.headers["set-cookie"]![0].split(";")[0];
+      return { ...r, signer, challenge, proof };
+    },
   };
 }
 async function campaign(
@@ -1567,6 +1585,125 @@ test("runtime transaction-local settings do not leak between pooled clients and 
   );
 });
 
+test("MAINNET tenant migration preserves legacy campaigns, invitations, claims and history", async (t) => {
+  const { mainnetIdentity } = await import("../../server/postgres/mainnet.js");
+  const db = await database(t, false);
+  const legacyDirectory = mkdtempSync(join(tmpdir(), "nimclaim-mainnet-v3-"));
+  try {
+    for (const file of ["001_claims.sql", "002_payments.sql", "003_limits.sql"])
+      cpSync(
+        join(mainnetIdentity.directory, file),
+        join(legacyDirectory, file),
+      );
+    await migrate(db.pool, legacyDirectory, mainnetIdentity.deployment);
+    await bootstrap(db.pool, hash, mainnetIdentity);
+
+    const campaignId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const invitationId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const challengeId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    const claimId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    const sessionHash = "f".repeat(64);
+    const now = Date.now();
+    await db.pool.query("INSERT INTO sessions (hash,expires) VALUES ($1,$2)", [
+      sessionHash,
+      now + 3_600_000,
+    ]);
+    await db.pool.query(
+      "INSERT INTO campaigns VALUES ($1,'Legacy campaign','Existing details',12345,2,$2,$3)",
+      [campaignId, now + 86_400_000, now],
+    );
+    await db.pool.query("INSERT INTO invitations VALUES ($1,$2,$3,$4)", [
+      invitationId,
+      campaignId,
+      "a".repeat(64),
+      now,
+    ]);
+    await db.pool.query("INSERT INTO challenges VALUES ($1,$2,$3,$4,1)", [
+      challengeId,
+      invitationId,
+      "legacy signed challenge",
+      now + 60_000,
+    ]);
+    await db.pool.query(
+      "INSERT INTO claims VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8)",
+      [
+        claimId,
+        invitationId,
+        campaignId,
+        "NQ00 LEGACY ADDRESS",
+        "1".repeat(64),
+        "2".repeat(128),
+        challengeId,
+        now,
+      ],
+    );
+    await db.pool.query(
+      "INSERT INTO events (claim_id,status,at) VALUES ($1,'pending',$2)",
+      [claimId, now],
+    );
+
+    await migrate(
+      db.pool,
+      mainnetIdentity.directory,
+      mainnetIdentity.deployment,
+    );
+    const legacy = (
+      await db.pool.query(
+        "SELECT id FROM organisers WHERE legacy=true AND wallet_address IS NULL",
+      )
+    ).rows[0];
+    assert.ok(legacy);
+    assert.deepEqual(
+      (
+        await db.pool.query(
+          "SELECT id,organiser_id,title FROM campaigns WHERE id=$1",
+          [campaignId],
+        )
+      ).rows[0],
+      {
+        id: campaignId,
+        organiser_id: legacy.id,
+        title: "Legacy campaign",
+      },
+    );
+    assert.equal(
+      (
+        await db.pool.query("SELECT token_hash FROM invitations WHERE id=$1", [
+          invitationId,
+        ])
+      ).rows[0].token_hash,
+      "a".repeat(64),
+    );
+    assert.equal(
+      (
+        await db.pool.query("SELECT id,status FROM claims WHERE id=$1", [
+          claimId,
+        ])
+      ).rows[0].status,
+      "pending",
+    );
+    assert.equal(
+      (
+        await db.pool.query(
+          "SELECT count(*) AS n FROM events WHERE claim_id=$1",
+          [claimId],
+        )
+      ).rows[0].n,
+      1,
+    );
+    assert.equal(
+      (
+        await db.pool.query("SELECT expires FROM sessions WHERE hash=$1", [
+          sessionHash,
+        ])
+      ).rows[0].expires,
+      0,
+    );
+  } finally {
+    rmSync(legacyDirectory, { recursive: true, force: true });
+  }
+});
+
 async function mainnetDatabase(t: { after: Function }) {
   const { mainnetIdentity } = await import("../../server/postgres/mainnet.js");
   const db = await database(t, false);
@@ -1590,10 +1727,66 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
   assert.equal(config.network, "mainnet");
   assert.equal(config.staging, false);
   assert.equal(config.claimsOnly, true);
-  const login = await organiser.login();
+  assert.equal((await organiser.call("/api/login", { password })).status, 404);
+  const unknownClient = client(api.port, appOrigin);
+  const unknownSigner = testSigner();
+  const unknownChallenge = await unknownClient.call("/api/auth/challenge", {
+    intent: "login",
+  });
+  assert.equal(unknownChallenge.status, 201);
+  assert.equal(
+    (
+      await unknownClient.call("/api/auth/verify", {
+        challengeId: unknownChallenge.body.id,
+        publicKey: unknownSigner.publicKey,
+        signature: unknownSigner.sign(unknownChallenge.body.message),
+      })
+    ).status,
+    404,
+  );
+
+  const owner = testSigner();
+  const login = await organiser.walletLogin(owner, "link", password);
+  const duplicateRegistration = client(api.port, appOrigin);
+  const duplicateChallenge = await duplicateRegistration.call(
+    "/api/auth/challenge",
+    { intent: "register" },
+  );
+  assert.equal(
+    (
+      await duplicateRegistration.call("/api/auth/verify", {
+        challengeId: duplicateChallenge.body.id,
+        publicKey: owner.publicKey,
+        signature: owner.sign(duplicateChallenge.body.message),
+      })
+    ).status,
+    409,
+  );
+  const secondLegacyLink = client(api.port, appOrigin);
+  const secondLegacyChallenge = await secondLegacyLink.call(
+    "/api/auth/challenge",
+    { intent: "link" },
+  );
+  const secondLegacyWallet = testSigner();
+  assert.equal(
+    (
+      await secondLegacyLink.call("/api/auth/verify", {
+        challengeId: secondLegacyChallenge.body.id,
+        publicKey: secondLegacyWallet.publicKey,
+        signature: secondLegacyWallet.sign(secondLegacyChallenge.body.message),
+        legacyPassword: password,
+      })
+    ).status,
+    409,
+  );
   assert.match(
     login.headers["set-cookie"]![0],
     /^nimclaim_mainnet_session=.*; Secure$/,
+  );
+  assert.equal(login.body.organiser.walletAddress, owner.address);
+  assert.equal(
+    (await organiser.call("/api/auth/verify", login.proof)).status,
+    409,
   );
   const c = await campaign(organiser, 2);
   const challengePath = `/api/campaigns/${c.id}/wallet/challenge`;
@@ -1609,7 +1802,6 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
     403,
   );
   const binding = (await organiser.call(challengePath, {})).body;
-  const owner = testSigner();
   assert.equal(JSON.parse(binding.message).network, "mainnet");
   const walletProof = {
     challengeId: binding.id,
@@ -1617,11 +1809,35 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
     signature: owner.sign(binding.message),
   };
   const otherSession = client(api.port, appOrigin);
-  await otherSession.login();
+  const otherOwner = testSigner();
+  await otherSession.walletLogin(otherOwner, "register");
+  assert.deepEqual(
+    (await otherSession.call("/api/campaigns")).body.campaigns,
+    [],
+  );
+  assert.equal((await otherSession.call(`/api/campaigns/${c.id}`)).status, 404);
+  assert.equal(
+    (await otherSession.call(`/api/campaigns/${c.id}/invitations`, {})).status,
+    404,
+  );
   assert.equal(
     (await otherSession.call(`/api/campaigns/${c.id}/wallet`, walletProof))
       .status,
-    409,
+    404,
+  );
+  const otherCampaign = await campaign(otherSession, 1);
+  assert.notEqual(otherCampaign.id, c.id);
+  assert.equal(
+    (await otherSession.call("/api/campaigns")).body.campaigns.length,
+    1,
+  );
+  assert.equal(
+    (await organiser.call("/api/campaigns")).body.campaigns.length,
+    1,
+  );
+  assert.equal(
+    (await organiser.call(`/api/campaigns/${otherCampaign.id}`)).status,
+    404,
   );
   assert.equal(
     (
@@ -1657,6 +1873,14 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
   const claimId = result.body.claim.id;
   assert.equal(
     (
+      await otherSession.call(`/api/claims/${claimId}/decision`, {
+        decision: "payment-ready",
+      })
+    ).status,
+    404,
+  );
+  assert.equal(
+    (
       await organiser.call(`/api/claims/${claimId}/decision`, {
         decision: "payment-ready",
       })
@@ -1673,7 +1897,7 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
   );
   for (const port of [api.port, api.backend]) {
     const caller = client(port, appOrigin);
-    await caller.login();
+    await caller.walletLogin(testSigner(), "register");
     const attempt = await caller.call(
       `/api/claims/${claimId}/payment/reserve`,
       {},
@@ -1700,7 +1924,7 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
     ).body.authenticated,
     true,
   );
-  await existing.login();
+  await existing.walletLogin(owner, "login");
   const detail = (await existing.call(`/api/campaigns/${c.id}`)).body;
   assert.equal(detail.wallet.address, owner.address);
   assert.equal(detail.claims[0].status, "payment-ready");
@@ -1744,12 +1968,17 @@ test("MAINNET startup refuses TESTNET identities and staging refuses MAINNET; or
     "https://nimclaim-mainnet.onrender.com",
     "mainnet",
   );
-  const id = randomBytes(16).toString("hex");
+  const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const legacyOrganiserId = (
+    await pool.query("SELECT id FROM organisers WHERE legacy=true")
+  ).rows[0].id;
   await pool.query(
-    "INSERT INTO campaigns VALUES ($1,'Synthetic','Test',1,1,$2,$3)",
-    [id, Date.now() + 3600000, Date.now()],
+    "INSERT INTO campaigns (id,title,description,amount,slots,expires,created,organiser_id) VALUES ($1,'Synthetic','Test',1,1,$2,$3,$4)",
+    [id, Date.now() + 3600000, Date.now(), legacyOrganiserId],
   );
-  const token = new URL((await store.issue(id)).url).hash.slice(7);
+  const token = new URL(
+    (await store.issue(id, legacyOrganiserId)).url,
+  ).hash.slice(7);
   const signer = testSigner();
   const challenge = await store.challenge(token);
   const input = {

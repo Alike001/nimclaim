@@ -71,7 +71,7 @@ export async function connectWallet(network: string) {
     provider = await init({ timeout: 3000 });
   } catch {
     throw new Error(
-      "Nimiq Pay is unavailable in this browser. Open this invitation inside Nimiq Pay, or update the app and retry.",
+      "Nimiq Pay is unavailable in this browser. Open NimClaim inside Nimiq Pay via Mini Apps → Custom URL, or update Nimiq Pay and retry.",
     );
   }
 
