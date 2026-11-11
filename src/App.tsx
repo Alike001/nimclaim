@@ -329,9 +329,9 @@ function Organiser({
         </form>
         <Notice text={error} />
         <p className="muted">
-          Private organiser access. Only the campaign owner can create invitations
-          or review claims. Contributors use their own invitation links and do
-          not need this password.
+          {staging
+            ? "Use your separate staging organiser credentials."
+            : "Private organiser access. Only the campaign owner can create invitations or review claims. Contributors use their own invitation links and do not need this password."}
         </p>
         <p>
           Received a reward invitation? Open the complete link inside Nimiq Pay.
