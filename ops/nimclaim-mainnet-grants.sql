@@ -39,4 +39,5 @@ GRANT UPDATE (used) ON public.organiser_challenges,
   public.organiser_auth_challenges TO nimclaim_app;
 GRANT UPDATE (wallet_address,public_key) ON public.organisers TO nimclaim_app;
 GRANT INSERT ON public.campaign_wallets TO nimclaim_app;
+GRANT SELECT, INSERT ON public.manual_payment_receipts TO nimclaim_app;
 COMMIT;
