@@ -231,8 +231,8 @@ export class PostgresStore {
       } else {
         if (organiser)
           fail(409, "This wallet already has a workspace. Sign in instead.");
-        const legacyPassword = input.legacyPassword;
-        if (typeof legacyPassword !== "string" || legacyPassword.length === 0)
+        const legacyPassword = input.legacyPassword ?? "";
+        if (legacyPassword.length === 0)
           fail(400, "Enter the previous workspace password to link its records.");
         const legacy = (
           await c.query("SELECT password_hash FROM organiser WHERE id=1")
