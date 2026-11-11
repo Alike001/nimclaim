@@ -56,7 +56,14 @@ These steps require separately authorised provisioning and deployment. None was 
 
 The multi-organiser release adds migration `004_multi_organiser.sql`. It does not create a replacement database and must not be applied to TESTNET.
 
-1. Take and verify a fresh encrypted backup using the existing approved backup procedure. Confirm the target is the separate `nimclaim_mainnet` database and the production endpoint.
+1. Take a fresh encrypted backup of the **MAINNET** database. Install PostgreSQL 17 client tools (`pg_dump --version` must report 17.x), then create a separate 32-byte backup key and store it outside the repository:
+   ```sh
+   umask 077
+   mkdir -p /secure/backups
+   node --input-type=module -e 'import{randomBytes}from"node:crypto";import{writeFileSync}from"node:fs";writeFileSync("/secure/nimclaim-mainnet-backup.key",randomBytes(32),{flag:"wx",mode:0o600})'
+   npm run mainnet:backup -- .local/mainnet/admin.env /secure/nimclaim-mainnet-backup.key "/secure/backups/nimclaim-mainnet-$(date -u +%Y%m%dT%H%M%SZ).dump.enc"
+   ```
+   The command verifies the pinned MAINNET database marker and PostgreSQL major version, prints only campaign/invitation/claim/history counts, and writes an AES-256-GCM encrypted archive without a plaintext dump. Keep the key separately from the archive. Never upload either file or paste the key into chat. Confirm the archive exists before continuing.
 2. From the repository version containing migration 004, run:
    ```sh
    npm run mainnet:migrate -- .local/mainnet/admin.env
