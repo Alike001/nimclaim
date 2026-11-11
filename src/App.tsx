@@ -867,10 +867,10 @@ function CampaignDetail({ id, back }: { id: string; back: () => void }) {
         data.claims.map((claim) => (
           <section className="panel claim-card" key={claim.id}>
             <Badge
-        status={claimStatus(claim)}
-        staging={data.staging}
-        claimsOnly={data.claimsOnly}
-      />
+              status={claimStatus(claim)}
+              staging={data.staging}
+              claimsOnly={data.claimsOnly}
+            />
             <h3>Verified recipient</h3>
             <code className="address">{claim.address}</code>
             <History
