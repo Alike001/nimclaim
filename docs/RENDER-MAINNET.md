@@ -52,6 +52,26 @@ These steps require separately authorised provisioning and deployment. None was 
 
    `mainnet:credentials` saves the legacy workspace-link password and its salted hash in a protected file without printing them. Put the password in a password manager. `bootstrap` creates the one-time legacy-link credential once and refuses overwrite. Keep direct credentials and the organiser file off Render. New organisers do not need this password: a first Nimiq Pay wallet sign-in creates a separate workspace. `mainnet:verify` checks the **pooled** runtime identity, TLS, migration checksums, schema, legacy organiser and exact privileges without writing. Runtime can create organiser identities, sessions, campaigns and claims but cannot read or modify payment tables.
 
+### Upgrade the already-deployed single-organiser MAINNET database
+
+The multi-organiser release adds migration `004_multi_organiser.sql`. It does not create a replacement database and must not be applied to TESTNET.
+
+1. Take and verify a fresh encrypted backup using the existing approved backup procedure. Confirm the target is the separate `nimclaim_mainnet` database and the production endpoint.
+2. From the repository version containing migration 004, run:
+   ```sh
+   npm run mainnet:migrate -- .local/mainnet/admin.env
+   ```
+   The migration creates a legacy tenant, assigns every existing campaign and session to it, preserves invitations, claims and history, and expires all old sessions so password-only cookies cannot remain valid.
+3. Apply the updated restricted grants and verify them:
+   ```sh
+   npm run mainnet:grants -- .local/mainnet/admin.env
+   npm run mainnet:verify -- .local/mainnet/runtime.env
+   ```
+   Do **not** run `mainnet:bootstrap` again on the existing database; it refuses to overwrite the original legacy credential.
+4. Only after the migration and grant checks pass, deploy the reviewed application commit to the existing MAINNET Render service. Keep automatic deploys off until the manual deploy is intentionally started. Existing users must sign in again. The legacy owner uses the old password once under **Link your previous workspace**, then signs the wallet challenge. New organisers simply sign in with Nimiq Pay.
+
+Do not run these upgrade steps against the production database until the PR has passed CI and a backup has been verified. No payout, payment or spending setting changes are part of this migration.
+
 4. After PR review and merge to `main`, and only after release authorisation, in Render choose **New → Blueprint**, connect the repository and select `main`. Set **Blueprint Path** to `render.production.yaml`. The service in this Blueprint also deploys from `main`; keep `autoDeployTrigger` off. The plan must contain only the new `nimclaim-mainnet` web service; use a separate Blueprint and leave the staging Blueprint alone. The plan must contain only the new `nimclaim-mainnet` web service; use a separate Blueprint and leave the staging Blueprint alone. Enter `APP_ORIGIN`, `PRODUCTION_DATABASE_HOST` and the pooled `DATABASE_URL` when prompted. Check the actual assigned hostname; if Render adds a suffix, set the exact origin for this new service before completing release checks. Applying a Blueprint starts deployment even with automatic service deploys off. [Render Blueprint setup](https://render.com/docs/infrastructure-as-code#setup)
 5. Verify `GET /healthz` returns `{"ready":true}` and `GET /api/config` reports `network: "mainnet"`, the exact origin, `staging: false` and `claimsOnly: true`. Confirm TESTNET `/api/config` still reports `testnet`, and a new wallet starts with its own empty workspace, while the previous organiser can link the legacy workspace to recover its existing records. `/healthz` reports process liveness after database startup validation; use `/api/config` or a private signed-in read to check ongoing database availability. Verify the backup history and restore a copy before accepting claims. Keep deployment/recovery scoped to this service and project.
 6. Complete the physical test below **before sharing or submitting the production URL**. For a device trial use a private, production-shaped MAINNET deployment with a separate Neon project, or the newly deployed service with a real campaign and consenting organiser/recipient. Never insert synthetic records into the production database.
