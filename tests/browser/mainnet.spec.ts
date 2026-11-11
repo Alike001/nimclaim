@@ -65,8 +65,8 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
   await page
     .getByLabel("Description")
     .fill("Isolated automated test; no actual NIM transfers.");
-  await page.getByLabel("Reward amount (NIM)").fill("0.12345");
-  await page.getByLabel("Available rewards").fill("1");
+  await page.getByLabel("Reward commitment (NIM)").fill("0.12345");
+  await page.getByLabel("Available claim slots").fill("1");
   await page
     .getByLabel("Expiry date and time")
     .fill(new Date(Date.now() + 86400000).toISOString().slice(0, 16));
@@ -91,7 +91,7 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
   await page.getByRole("button", { name: /Synthetic mainnet UI test/ }).click();
   await page.getByRole("button", { name: "Approve claim" }).click();
   await expect(
-    page.getByText("Payment-ready · unpaid", { exact: true }).first(),
+    page.getByText("Approved · unpaid", { exact: true }).first(),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: /Review.*payment/i }),
