@@ -1,3 +1,5 @@
+# Mainnet spending: NO-GO
+
 ## Read-only external payment verification
 
 The MAINNET PostgreSQL runtime accepts an organiser-submitted transaction hash
@@ -14,7 +16,6 @@ refunds. A transfer made from a different sender wallet will not match the
 campaign's authorised wallet. The public RPC used for the demo is rate-limited
 and has no uptime guarantee; production needs a dedicated trusted node.
 
-# Mainnet spending: NO-GO
 
 The [MAINNET claims deployment](RENDER-MAINNET.md) is live at https://nimclaim-mainnet-smv5.onrender.com. Physical no-spend Nimiq Pay acceptance for organiser access, contributor claims and review was completed on two devices on 11 November 2026. This document concerns enabling spending only.
 
