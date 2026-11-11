@@ -110,9 +110,10 @@ function Landing({
             <span>Verify the wallet.</span>
           </h1>
           <p className="landing-lede">
-            Create a campaign, invite contributors privately, and review real
-            Nimiq Pay wallet signatures. NimClaim records claim decisions; it
-            does not transfer NIM.
+            Invite contributors privately, verify the receiving wallet with
+            a Nimiq Pay signature, and review each claim before preparing a
+            reward handoff. NimClaim records claim decisions; it does not
+            transfer NIM.
           </p>
           <div className="landing-actions">
             <a className="landing-primary" href="#organiser-access">
