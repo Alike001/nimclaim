@@ -1,5 +1,10 @@
 import { WalletDiagnostics } from "./WalletDiagnostics";
-import { CampaignWallet, Payout, PaymentStatus, ExternalPaymentVerifier } from "./Payments";
+import {
+  CampaignWallet,
+  Payout,
+  PaymentStatus,
+  ExternalPaymentVerifier,
+} from "./Payments";
 import type { PaymentGate } from "../shared/payments";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
@@ -886,8 +891,8 @@ function ApprovedRewards({
       <p>
         Review every approved reward here. Send the exact NIM amount to the
         verified recipient through Nimiq Pay, then submit the transaction hash
-        below. NimClaim independently checks the transfer before recording it
-        as paid. NimClaim never sends or holds the funds.
+        below. NimClaim independently checks the transfer before recording it as
+        paid. NimClaim never sends or holds the funds.
       </p>
       <p className="muted">
         Payments are verified against the Nimiq MAINNET chain. A hash alone is
@@ -910,7 +915,9 @@ function ApprovedRewards({
                 <strong>
                   {nim(campaign.amount)} <small>NIM</small>
                 </strong>
-                <span className={`badge ${claim.payment ? "paid" : "payment-ready"}`}>
+                <span
+                  className={`badge ${claim.payment ? "paid" : "payment-ready"}`}
+                >
                   {claim.payment?.state === "CONFIRMED" &&
                   claim.payment.receipt?.executionResult === true
                     ? "Paid · verified on-chain"
@@ -1248,8 +1255,8 @@ function CampaignDetail({
                 ) : data.claimsOnly ? (
                   <>
                     Approved for {nim(c.amount)} NIM. Send from the authorised
-                    campaign wallet in Nimiq Pay, then verify the transaction
-                    in Approved Rewards.
+                    campaign wallet in Nimiq Pay, then verify the transaction in
+                    Approved Rewards.
                   </>
                 ) : (
                   <>

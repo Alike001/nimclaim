@@ -114,7 +114,12 @@ async function worker(
   name: string,
   appOrigin = origin,
   mainnet = false,
-  rpcConfig?: { sender: string; recipient: string; amount: number; hash: string },
+  rpcConfig?: {
+    sender: string;
+    recipient: string;
+    amount: number;
+    hash: string;
+  },
 ) {
   const child = spawn(
     process.execPath,
@@ -1966,8 +1971,14 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
   assert.equal(verified.body.claim.payment.receipt.source, "external");
   assert.equal(verified.body.claim.payment.receipt.amount, 1_000_000);
   assert.equal(verified.body.claim.payment.receipt.sender, owner.address);
-  assert.equal(verified.body.claim.payment.receipt.recipient, contributor.address);
-  assert.match(verified.body.claim.payment.explorerUrl, /^https:\/\/nimiq\.watch\/#/);
+  assert.equal(
+    verified.body.claim.payment.receipt.recipient,
+    contributor.address,
+  );
+  assert.match(
+    verified.body.claim.payment.explorerUrl,
+    /^https:\/\/nimiq\.watch\/#/,
+  );
   assert.equal(
     (
       await existing.call(`/api/claims/${claimId}/payment/verify`, {
@@ -1981,7 +1992,8 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
   assert.equal(paidDetail.claims[0].payment.state, "CONFIRMED");
   assert.equal(paidDetail.claims[0].history.at(-1).status, "paid");
   assert.equal(
-    (await pool.query("SELECT count(*) AS n FROM manual_payment_receipts")).rows[0].n,
+    (await pool.query("SELECT count(*) AS n FROM manual_payment_receipts"))
+      .rows[0].n,
     1,
   );
   assert.equal(
@@ -1992,7 +2004,8 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
   await verifyRuntimeRole(runtime, true);
   await assert.rejects(verifyRuntimeRole(runtime)); // production grants cannot silently enter staging
   assert.equal(
-    (await runtime.query("SELECT count(*) AS n FROM manual_payment_receipts")).rows[0].n,
+    (await runtime.query("SELECT count(*) AS n FROM manual_payment_receipts"))
+      .rows[0].n,
     1,
   );
   for (const sql of [

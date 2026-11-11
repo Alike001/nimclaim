@@ -3,8 +3,19 @@ import { randomUUID } from "node:crypto";
 import { transaction } from "./db.js";
 import { checkPassword, digest, randomToken, verifyOwner } from "../crypto.js";
 import { fail } from "../http-contract.js";
-import { chain, hashSchema, verifyBasicTransfer, EvidenceMismatch, type Rpc } from "../rpc.js";
-import type { Intent, PaymentState, PaymentView, Receipt } from "../../shared/payments.js";
+import {
+  chain,
+  hashSchema,
+  verifyBasicTransfer,
+  EvidenceMismatch,
+  type Rpc,
+} from "../rpc.js";
+import type {
+  Intent,
+  PaymentState,
+  PaymentView,
+  Receipt,
+} from "../../shared/payments.js";
 
 type Row = Record<string, any>;
 export class PostgresStore {
@@ -516,7 +527,10 @@ export class PostgresStore {
     if (!organiserId) fail(401, "Organiser session is required.");
     const rpc = this.rpc;
     if (!rpc)
-      return fail(503, "MAINNET read-only transaction verification is not configured.");
+      return fail(
+        503,
+        "MAINNET read-only transaction verification is not configured.",
+      );
     const hash = hashSchema.parse(hashInput.toLowerCase());
     const claim = (
       await this.read(
@@ -533,7 +547,10 @@ export class PostgresStore {
     if (claim.status !== "payment-ready")
       fail(409, "Only an approved claim can receive a verified payment.");
     if (!claim.sender)
-      fail(409, "Authorize the campaign's organiser wallet before verifying payment.");
+      fail(
+        409,
+        "Authorize the campaign's organiser wallet before verifying payment.",
+      );
     const existing = (
       await this.read(
         "SELECT claim_id,hash FROM manual_payment_receipts WHERE claim_id=$1 OR hash=$2",
@@ -545,7 +562,10 @@ export class PostgresStore {
         return this.claimView(
           (await this.read("SELECT * FROM claims WHERE id=$1", [claimId]))[0],
         );
-      fail(409, "This transaction hash has already been recorded or this claim is already paid.");
+      fail(
+        409,
+        "This transaction hash has already been recorded or this claim is already paid.",
+      );
     }
 
     const verification = await verifyBasicTransfer(
@@ -590,7 +610,10 @@ export class PostgresStore {
           Number(current.amount) !== Number(claim.amount) ||
           current.sender !== claim.sender
         )
-          fail(409, "Claim or campaign payment details changed. Refresh and verify again.");
+          fail(
+            409,
+            "Claim or campaign payment details changed. Refresh and verify again.",
+          );
         const duplicate = (
           await c.query(
             "SELECT claim_id,hash FROM manual_payment_receipts WHERE claim_id=$1 OR hash=$2",
@@ -598,7 +621,10 @@ export class PostgresStore {
           )
         ).rows[0];
         if (duplicate)
-          fail(409, "This transaction hash has already been recorded or this claim is already paid.");
+          fail(
+            409,
+            "This transaction hash has already been recorded or this claim is already paid.",
+          );
         await c.query(
           `INSERT INTO manual_payment_receipts
             (id,claim_id,campaign_id,hash,sender,recipient,amount,fee,network,
@@ -625,7 +651,6 @@ export class PostgresStore {
           "INSERT INTO events(claim_id,status,at) VALUES ($1,'paid',$2)",
           [claimId, receipt.verifiedAt],
         );
-
       });
     } catch (error) {
       if (
@@ -645,7 +670,9 @@ export class PostgresStore {
     );
   }
 
-  private async manualPaymentView(claimId: string): Promise<PaymentView | null> {
+  private async manualPaymentView(
+    claimId: string,
+  ): Promise<PaymentView | null> {
     const row = (
       await this.read(
         `SELECT r.*,p.expires

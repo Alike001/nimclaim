@@ -9,7 +9,6 @@ uptime guarantee, so configure a healthy backup or a dedicated node for
 production. The runtime uses only read methods and still rejects `RPC_URL`,
 `RPC_AUTHORIZATION`, spending network settings and all broadcast paths.
 
-
 The active public MAINNET service is [nimclaim-mainnet-smv5.onrender.com](https://nimclaim-mainnet-smv5.onrender.com), deployed on Render from `main` in Frankfurt on the Free plan, with automatic deploys disabled. It supports private campaigns, organiser wallet binding, signed recipient claims and review using Neon PostgreSQL 17. **NimClaim never initiates or escrows NIM transfers.** Organisers pay through Nimiq Pay and can submit a transaction hash for read-only MAINNET verification. The runtime records an immutable receipt only after exact sender, recipient, amount, canonical execution and macro finality checks. The separate TESTNET staging blueprint uses `render.yaml` and `start:staging`; it is not the active MAINNET service.
 
 ## Production environment

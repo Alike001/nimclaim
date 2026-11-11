@@ -36,7 +36,6 @@ const pending: Claim = {
   history: [{ status: "pending", at: 1_700_000_000_000 }],
 };
 
-
 const paid: Claim = {
   ...approved,
   id: "claim-paid",
@@ -110,7 +109,6 @@ test("CSV preserves exact NIM precision and labels settlement as unpaid", () => 
   assert.ok(csv.includes("2023-11-14T22:15:00.000Z"));
   assert.ok(!csv.includes("claim-pending"));
 });
-
 
 test("approved CSV includes both unpaid rewards and independently verified external payments", () => {
   const csv = buildApprovedRewardsCsv(campaign, [approved, paid], "mainnet");

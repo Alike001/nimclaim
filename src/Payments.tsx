@@ -37,7 +37,11 @@ export function PaymentStatus({
       </h3>
       <p>{payment.reason}</p>
       <dl className="payment-facts">
-        <dt>{payment.receipt?.source === "external" ? "Verified sender" : "Expected sender"}</dt>
+        <dt>
+          {payment.receipt?.source === "external"
+            ? "Verified sender"
+            : "Expected sender"}
+        </dt>
         <dd>{payment.intent.sender}</dd>
         <dt>Recipient</dt>
         <dd>{payment.intent.recipient}</dd>
@@ -60,8 +64,11 @@ export function PaymentStatus({
             block {payment.receipt.macroNumber}
           </p>
           <p>
-            Verified {date(payment.receipt.verifiedAt)} against independent {payment.intent.network.toUpperCase()} RPC.
-            {payment.receipt.source === "external" ? " The transfer was sent separately through Nimiq Pay; NimClaim did not broadcast or custody funds." : ""}
+            Verified {date(payment.receipt.verifiedAt)} against independent{" "}
+            {payment.intent.network.toUpperCase()} RPC.
+            {payment.receipt.source === "external"
+              ? " The transfer was sent separately through Nimiq Pay; NimClaim did not broadcast or custody funds."
+              : ""}
           </p>
           <code className="address">{payment.receipt.hash}</code>
           {payment.explorerUrl && (
@@ -164,8 +171,16 @@ export function ExternalPaymentVerifier({
           approved and unpaid until the transfer can be independently verified.
         </p>
       )}
-      {error && <p role="alert" className="notice">{error}</p>}
-      {notice && <p role="status" aria-live="polite">{notice}</p>}
+      {error && (
+        <p role="alert" className="notice">
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p role="status" aria-live="polite">
+          {notice}
+        </p>
+      )}
     </div>
   );
 }
@@ -219,7 +234,11 @@ export function CampaignWallet({
       </h2>
       {wallet ? (
         <>
-          <p>{claimsOnly ? "This is the authorised campaign wallet and expected sender for verified reward payments:" : "This campaign is permanently authorized to:"}</p>
+          <p>
+            {claimsOnly
+              ? "This is the authorised campaign wallet and expected sender for verified reward payments:"
+              : "This campaign is permanently authorized to:"}
+          </p>
           <code className="address">{wallet.address}</code>
         </>
       ) : (

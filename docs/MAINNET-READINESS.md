@@ -16,7 +16,6 @@ refunds. A transfer made from a different sender wallet will not match the
 campaign's authorised wallet. The public RPC used for the demo is rate-limited
 and has no uptime guarantee; production needs a dedicated trusted node.
 
-
 The [MAINNET claims deployment](RENDER-MAINNET.md) is live at https://nimclaim-mainnet-smv5.onrender.com. Physical no-spend Nimiq Pay acceptance for organiser access, contributor claims and review was completed on two devices on 11 November 2026. This document concerns enabling spending only.
 
 **MAINNET spending is explicitly blocked.** `SPENDING_ENABLED=false` remains the safe configuration. A separate read-only verifier now checks transfers already sent in Nimiq Pay; it does not sign, broadcast, reserve or custody funds. The verifier cannot turn an unconfirmed or mismatched transaction into a paid receipt.

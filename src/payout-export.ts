@@ -56,7 +56,7 @@ export function buildApprovedRewardsCsv(
         canonicalNim(campaign.amount),
         network.toUpperCase(),
         claim.payment?.state === "CONFIRMED" &&
-          claim.payment.receipt?.executionResult === true
+        claim.payment.receipt?.executionResult === true
           ? "Paid · verified on-chain"
           : "Approved · unpaid",
         claim.payment?.receipt?.source === "external"

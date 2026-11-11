@@ -349,7 +349,8 @@ export async function verifyBasicTransfer(
     if (macroNumber > head || macroNumber <= tx.blockNumber)
       return {
         state: "UNKNOWN",
-        reason: "The macro block needed to establish finality is not available yet.",
+        reason:
+          "The macro block needed to establish finality is not available yet.",
       };
     const macro = z
       .object({
@@ -360,7 +361,10 @@ export async function verifyBasicTransfer(
         justification: z.record(z.string(), z.unknown()),
       })
       .parse(await rpc.call("getBlockByNumber", [macroNumber, false]));
-    if (macro.number !== macroNumber || !Object.keys(macro.justification).length)
+    if (
+      macro.number !== macroNumber ||
+      !Object.keys(macro.justification).length
+    )
       return {
         state: "UNKNOWN",
         reason: "MAINNET macro-block finality evidence is unavailable.",
@@ -389,14 +393,16 @@ export async function verifyBasicTransfer(
     )
       return {
         state: "UNKNOWN",
-        reason: "Canonical MAINNET block evidence changed during finality verification.",
+        reason:
+          "Canonical MAINNET block evidence changed during finality verification.",
       };
     matchesBasicTransfer(finalTx.data, expected, hash);
 
     if (!tx.executionResult)
       return {
         state: "FAILED",
-        reason: "The transaction was finalized but execution failed; no reward was paid.",
+        reason:
+          "The transaction was finalized but execution failed; no reward was paid.",
       };
     return {
       state: "CONFIRMED",

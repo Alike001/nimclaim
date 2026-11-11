@@ -76,7 +76,10 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     const response = await route.fetch();
     const body = await response.json();
     if (url.pathname === "/api/config" || (body.campaign && body.paymentGate))
-      await route.fulfill({ response, json: { ...body, claimsOnly: true, manualPaymentVerification: false } });
+      await route.fulfill({
+        response,
+        json: { ...body, claimsOnly: true, manualPaymentVerification: false },
+      });
     else await route.fulfill({ response });
   });
   const signer = testSigner();
@@ -161,7 +164,9 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     .click();
   await page.getByRole("button", { name: "Authorize campaign wallet" }).click();
   await expect(
-    page.getByText("This is the authorised campaign wallet and expected sender for verified reward payments:"),
+    page.getByText(
+      "This is the authorised campaign wallet and expected sender for verified reward payments:",
+    ),
   ).toBeVisible();
   await page.getByRole("button", { name: "Create unique invitation" }).click();
   const invitationField = page.getByLabel(
