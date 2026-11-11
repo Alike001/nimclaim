@@ -364,7 +364,7 @@ function Organiser({
       setBusy(false);
     }
   }
-  async function walletLogin() {
+  async function walletLogin(intent: "login" | "register" | "link") {
     setBusy(true);
     setError("");
     try {
@@ -373,7 +373,7 @@ function Organiser({
         id: string;
         message: string;
         expires: number;
-      }>("/auth/challenge", {});
+      }>("/auth/challenge", { intent });
       const signed = await signChallenge(
         connected.provider,
         challenge.message,
@@ -387,7 +387,7 @@ function Organiser({
         challengeId: challenge.id,
         publicKey: signed.publicKey,
         signature: signed.signature,
-        ...(legacyPassword ? { legacyPassword } : {}),
+        ...(intent === "link" ? { legacyPassword } : {}),
       });
       setWalletAddress(result.organiser.walletAddress);
       setLegacyPassword("");
@@ -420,14 +420,23 @@ function Organiser({
             <button
               className="wallet-login"
               type="button"
-              onClick={walletLogin}
+              onClick={() => walletLogin("login")}
               disabled={busy}
             >
-              {busy ? "Waiting for Nimiq Pay…" : "Continue with Nimiq Pay"}
+              {busy ? "Waiting for Nimiq Pay…" : "Sign in with Nimiq Pay"}
+            </button>
+            <button
+              className="wallet-login wallet-login-secondary"
+              type="button"
+              onClick={() => walletLogin("register")}
+              disabled={busy}
+            >
+              {busy ? "Waiting for Nimiq Pay…" : "Create a new workspace"}
             </button>
             <p className="auth-help">
-              New wallet? Your private workspace is created automatically.
-              Returning wallet? Your campaigns will be waiting for you.
+              Choose sign in if you already have a NimClaim workspace. New
+              organisers should create one. Each wallet gets its own private
+              campaigns and claim reviews.
             </p>
             <details className="auth-legacy-link">
               <summary>Already used NimClaim? Link your previous workspace</summary>
@@ -449,9 +458,18 @@ function Organiser({
                 onChange={(event) => setLegacyPassword(event.target.value)}
               />
               <p className="auth-help">
-                Leave this empty to create a new workspace. Never enter your
-                Nimiq Pay PIN or recovery phrase.
+                This password is used once to attach your previous campaigns
+                to this wallet. Never enter your Nimiq Pay PIN or recovery
+                phrase.
               </p>
+              <button
+                className="wallet-login"
+                type="button"
+                onClick={() => walletLogin("link")}
+                disabled={busy || !legacyPassword}
+              >
+                {busy ? "Waiting for Nimiq Pay…" : "Link previous workspace"}
+              </button>
             </details>
             <Notice text={error} />
             <p className="muted auth-access-note">
