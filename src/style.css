@@ -1246,7 +1246,10 @@ main {
   margin: 0;
 }
 .approved-count {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
   border: 1px solid #d7e4d8;
   border-radius: 999px;
   background: #edf4eb;
