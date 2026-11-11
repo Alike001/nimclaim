@@ -417,6 +417,10 @@ function Organiser({
               existing workspace. Your wallet signs a one-time login message;
               NimClaim never receives your PIN, recovery phrase or private key.
             </p>
+            <p className="auth-help">
+              Open this page inside Nimiq Pay via Mini Apps → Custom URL before
+              signing in or creating a workspace.
+            </p>
             <button
               className="wallet-login"
               type="button"
