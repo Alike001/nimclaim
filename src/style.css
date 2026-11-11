@@ -691,12 +691,12 @@ main { max-width: 1120px; }
 }
 .landing-preview-step div span {
   display: block;
-  color: #688178;
+  color: #50695e;
   font-size: 12px;
   line-height: 1.65;
   margin-top: 3px;
 }
-.landing-step-number { font-size: 11px; font-weight: 800; color: #7ba18a; }
+.landing-step-number { font-size: 11px; font-weight: 800; color: #38664e; }
 .landing-step-check {
   width: 25px;
   height: 25px;
