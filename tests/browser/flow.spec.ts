@@ -30,6 +30,8 @@ test("landing makes organiser and contributor paths clear and password visibilit
   page,
 }) => {
   await page.goto("/");
+  if (test.info().project.name === "mobile-chromium")
+    await page.setViewportSize({ width: 320, height: 700 });
   await expect(page.locator("header .header-access")).toHaveText(
     "Organiser sign in",
   );
@@ -44,17 +46,25 @@ test("landing makes organiser and contributor paths clear and password visibilit
   ).toBeVisible();
 
   const password = page.getByLabel("Workspace password");
+  await password.fill("temporary-test-password");
   await expect(password).toHaveAttribute("type", "password");
   await page.getByRole("button", { name: "Show", exact: true }).click();
   await expect(password).toHaveAttribute("type", "text");
+  await expect(password).toHaveValue("temporary-test-password");
   await page.getByRole("button", { name: "Hide", exact: true }).click();
   await expect(password).toHaveAttribute("type", "password");
+  await expect(password).toHaveValue("temporary-test-password");
 
   await page.locator("header .header-access").click();
   await expect(
     page.getByRole("heading", { name: "Sign in to manage campaigns" }),
   ).toBeVisible();
   await expect(page.locator(".landing")).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
   expect(
     (
       await new AxeBuilder({ page })
