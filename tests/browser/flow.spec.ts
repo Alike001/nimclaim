@@ -5,8 +5,8 @@ import { testSigner } from "../helpers";
 
 async function login(page: Page) {
   await page.goto("/");
-  await page.getByLabel("Organiser password").fill("browser-test-password");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByLabel("Workspace password").fill("browser-test-password");
+  await page.getByRole("button", { name: "Sign in to workspace", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Your campaigns" }),
   ).toBeVisible();
@@ -16,7 +16,45 @@ test("organiser login is accessible after application readiness", async ({
   page,
 }) => {
   await page.goto("/");
-  await expect(page.getByLabel("Organiser password")).toBeVisible();
+  await expect(page.getByLabel("Workspace password")).toBeVisible();
+  expect(
+    (
+      await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+        .analyze()
+    ).violations,
+  ).toEqual([]);
+});
+
+test("landing makes organiser and contributor paths clear and password visibility accessible", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.locator("header .header-access")).toHaveText(
+    "Organiser sign in",
+  );
+  await expect(page.getByText("Contributor?", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(/You don't need an account or organiser password/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      /Set a campaign title, reward commitment, available slots and expiry/,
+    ),
+  ).toBeVisible();
+
+  const password = page.getByLabel("Workspace password");
+  await expect(password).toHaveAttribute("type", "password");
+  await page.getByRole("button", { name: "Show", exact: true }).click();
+  await expect(password).toHaveAttribute("type", "text");
+  await page.getByRole("button", { name: "Hide", exact: true }).click();
+  await expect(password).toHaveAttribute("type", "password");
+
+  await page.locator("header .header-access").click();
+  await expect(
+    page.getByRole("heading", { name: "Sign in to manage campaigns" }),
+  ).toBeVisible();
+  await expect(page.locator(".landing")).toHaveCount(0);
   expect(
     (
       await new AxeBuilder({ page })
