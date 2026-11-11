@@ -13,7 +13,7 @@ test("MAINNET mobile campaign, organiser signature, recipient claim and unpaid a
     if (url.pathname === "/api/auth/challenge") {
       const id = "00000000-0000-4000-8000-000000000001";
       const expires = Date.now() + 300_000;
-      const intent = (request.postDataJSON() as { intent: string }).intent;
+      const intent = (request.postDataJSON() as { intent: "login" | "register" | "link" }).intent;
       const purpose = {
         login: "Sign in to your existing NimClaim organiser workspace",
         register: "Create a new NimClaim organiser workspace",
