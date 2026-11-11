@@ -1581,6 +1581,125 @@ test("runtime transaction-local settings do not leak between pooled clients and 
   );
 });
 
+test("MAINNET tenant migration preserves legacy campaigns, invitations, claims and history", async (t) => {
+  const { mainnetIdentity } = await import("../../server/postgres/mainnet.js");
+  const db = await database(t, false);
+  const legacyDirectory = mkdtempSync(join(tmpdir(), "nimclaim-mainnet-v3-"));
+  try {
+    for (const file of [
+      "001_claims.sql",
+      "002_payments.sql",
+      "003_limits.sql",
+    ])
+      cpSync(
+        join(mainnetIdentity.directory, file),
+        join(legacyDirectory, file),
+      );
+    await migrate(db.pool, legacyDirectory, mainnetIdentity.deployment);
+    await bootstrap(db.pool, hash, mainnetIdentity);
+
+    const campaignId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const invitationId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const challengeId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    const claimId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    const sessionHash = "f".repeat(64);
+    const now = Date.now();
+    await db.pool.query(
+      "INSERT INTO sessions (hash,expires) VALUES ($1,$2)",
+      [sessionHash, now + 3_600_000],
+    );
+    await db.pool.query(
+      "INSERT INTO campaigns VALUES ($1,'Legacy campaign','Existing details',12345,2,$2,$3)",
+      [campaignId, now + 86_400_000, now],
+    );
+    await db.pool.query(
+      "INSERT INTO invitations VALUES ($1,$2,$3,$4)",
+      [invitationId, campaignId, "a".repeat(64), now],
+    );
+    await db.pool.query(
+      "INSERT INTO challenges VALUES ($1,$2,$3,$4,1)",
+      [challengeId, invitationId, "legacy signed challenge", now + 60_000],
+    );
+    await db.pool.query(
+      "INSERT INTO claims VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8)",
+      [
+        claimId,
+        invitationId,
+        campaignId,
+        "NQ00 LEGACY ADDRESS",
+        "1".repeat(64),
+        "2".repeat(128),
+        challengeId,
+        now,
+      ],
+    );
+    await db.pool.query(
+      "INSERT INTO events (claim_id,status,at) VALUES ($1,'pending',$2)",
+      [claimId, now],
+    );
+
+    await migrate(
+      db.pool,
+      mainnetIdentity.directory,
+      mainnetIdentity.deployment,
+    );
+    const legacy = (
+      await db.pool.query(
+        "SELECT id FROM organisers WHERE legacy=true AND wallet_address IS NULL",
+      )
+    ).rows[0];
+    assert.ok(legacy);
+    assert.deepEqual(
+      (
+        await db.pool.query(
+          "SELECT id,organiser_id,title FROM campaigns WHERE id=$1",
+          [campaignId],
+        )
+      ).rows[0],
+      {
+        id: campaignId,
+        organiser_id: legacy.id,
+        title: "Legacy campaign",
+      },
+    );
+    assert.equal(
+      (
+        await db.pool.query(
+          "SELECT token_hash FROM invitations WHERE id=$1",
+          [invitationId],
+        )
+      ).rows[0].token_hash,
+      "a".repeat(64),
+    );
+    assert.equal(
+      (
+        await db.pool.query("SELECT id,status FROM claims WHERE id=$1", [
+          claimId,
+        ])
+      ).rows[0].status,
+      "pending",
+    );
+    assert.equal(
+      (
+        await db.pool.query("SELECT count(*) AS n FROM events WHERE claim_id=$1", [
+          claimId,
+        ])
+      ).rows[0].n,
+      1,
+    );
+    assert.equal(
+      (
+        await db.pool.query("SELECT expires FROM sessions WHERE hash=$1", [
+          sessionHash,
+        ])
+      ).rows[0].expires,
+      0,
+    );
+  } finally {
+    rmSync(legacyDirectory, { recursive: true, force: true });
+  }
+});
+
 async function mainnetDatabase(t: { after: Function }) {
   const { mainnetIdentity } = await import("../../server/postgres/mainnet.js");
   const db = await database(t, false);
