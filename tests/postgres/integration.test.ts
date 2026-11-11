@@ -1702,8 +1702,17 @@ test("MAINNET tenant migration preserves legacy campaigns, invitations, claims a
 
 async function mainnetDatabase(t: { after: Function }) {
   const { mainnetIdentity } = await import("../../server/postgres/mainnet.js");
+  const { schemaHash } = await import("../../server/postgres/schema.js");
   const db = await database(t, false);
   await migrate(db.pool, mainnetIdentity.directory, mainnetIdentity.deployment);
+  const schemaClient = await db.pool.connect();
+  try {
+    await schemaClient.query("BEGIN");
+    console.log("MAINNET_SCHEMA_HASH=" + (await schemaHash(schemaClient)));
+    await schemaClient.query("ROLLBACK");
+  } finally {
+    schemaClient.release();
+  }
   await bootstrap(db.pool, hash, mainnetIdentity);
   await db.pool.query(
     readFileSync("ops/nimclaim-mainnet-grants.sql", "utf8").replaceAll(
