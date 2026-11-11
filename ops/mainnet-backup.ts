@@ -77,6 +77,10 @@ async function main() {
     PGPASSWORD: String(runtime.password),
     PGDATABASE: runtime.database,
     PGSSLMODE: "verify-full",
+    // libpq does not use Node.js's TLS CA configuration. PostgreSQL 17
+    // must be told to use the operating system's trusted CA roots.
+    // This preserves hostname verification and does not weaken TLS.
+    PGSSLROOTCERT: "system",
     PGCHANNELBINDING: "require",
   });
   try {
