@@ -225,7 +225,7 @@ function client(apiPort: number, appOrigin = origin) {
       const r = await call("/api/auth/verify", proof);
       assert.equal(r.status, 200);
       cookie = r.headers["set-cookie"]![0].split(";")[0];
-      return { ...r, signer };
+      return { ...r, signer, challenge, proof };
     },
   };
 }
@@ -1787,6 +1787,10 @@ test("MAINNET real Postgres signs and persists claims and organiser binding acro
     /^nimclaim_mainnet_session=.*; Secure$/,
   );
   assert.equal(login.body.organiser.walletAddress, owner.address);
+  assert.equal(
+    (await organiser.call("/api/auth/verify", login.proof)).status,
+    409,
+  );
   const c = await campaign(organiser, 2);
   const challengePath = `/api/campaigns/${c.id}/wallet/challenge`;
   assert.equal((await publicClient.call(challengePath, {})).status, 401);
