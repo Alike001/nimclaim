@@ -372,6 +372,7 @@ export async function verifyBasicTransfer(
       receipt: {
         hash,
         blockNumber: tx.blockNumber,
+        validityStartHeight: tx.validityStartHeight,
         blockHash: block.hash,
         macroNumber,
         macroHash: macro.hash,
@@ -548,6 +549,7 @@ export async function verifyPayment(
       receipt: {
         hash,
         blockNumber: tx.blockNumber,
+        validityStartHeight: tx.validityStartHeight,
         blockHash: block.hash,
         macroNumber,
         macroHash: macro.hash,
