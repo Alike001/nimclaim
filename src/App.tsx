@@ -242,8 +242,12 @@ export default function App() {
         </a>
         <div className="header-actions">
           {!hash.startsWith("#claim=") && hash !== "#diagnostics" && (
-            <a className="header-access" href="#organiser-access">
-              Organiser workspace
+            <a
+              className="header-access"
+              href="#organiser-access"
+              aria-label="Open organiser workspace"
+            >
+              Workspace
             </a>
           )}
           <span className="network">
