@@ -219,15 +219,13 @@ export class PostgresStore {
       } else {
         if (organiser)
           fail(409, "This wallet already has a workspace. Sign in instead.");
-        if (input.legacyPassword === undefined)
+        const legacyPassword = input.legacyPassword;
+        if (typeof legacyPassword !== "string" || legacyPassword.length === 0)
           fail(400, "Enter the previous workspace password to link its records.");
         const legacy = (
           await c.query("SELECT password_hash FROM organiser WHERE id=1")
         ).rows[0];
-        if (
-          !legacy ||
-          !checkPassword(input.legacyPassword, legacy.password_hash)
-        )
+        if (!legacy || !checkPassword(legacyPassword, legacy.password_hash))
           fail(401, "Previous workspace password is incorrect. No account was linked.");
         const unlinked = (
           await c.query(
